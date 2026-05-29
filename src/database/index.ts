@@ -57,7 +57,9 @@ export function getDatabaseDiagnostics(): {
   sslEnabled: boolean;
   urlLooksValid: boolean;
 } {
-  const { connectionString, ssl } = resolvePoolConfig();
+  const poolConfig = resolvePoolConfig();
+  const connectionString = poolConfig.connectionString ?? '';
+  const ssl = poolConfig.ssl;
   const network: 'private' | 'public' | 'unknown' = connectionString.includes('.railway.internal')
     ? 'private'
     : connectionString.includes('rlwy.net') || connectionString.includes('railway.app')
