@@ -1,0 +1,30 @@
+{
+  "name": "rideey-discord-bot",
+  "version": "1.0.0",
+  "description": "Route Cash economy Discord bot for Rideey",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "migrate": "ts-node -e \"require('dotenv').config(); const { getPool, runMigrations, closePool } = require('./src/database'); (async () => { await runMigrations(); await closePool(); })();\""
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "decimal.js": "^10.4.3",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.1",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.11.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  }
+}
