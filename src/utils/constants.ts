@@ -21,10 +21,4 @@ export const TRANSACTION_TYPES_DEBIT = new Set([
   'redeem',
 ]);
 
-export const REDEEM_OPTIONS = {
-  one_dollar_credit: { rcCost: 1500, usdValue: 1, tag: '| -$1 CREDIT' },
-  two_dollar_credit: { rcCost: 3000, usdValue: 2, tag: '| -$2 CREDIT' },
-  five_dollar_credit: { rcCost: 7000, usdValue: 5, tag: '| -$5 CREDIT' },
-  ten_dollar_credit: { rcCost: 12000, usdValue: 10, tag: '| -$10 CREDIT' },
-  free_ride: { rcCost: 20000, usdValue: 20, tag: '| -FREE RIDE' },
-} as const;
+// REDEEM_OPTIONS removed — canonical source of truth is REDEEM_MAP in RedeemService.ts
