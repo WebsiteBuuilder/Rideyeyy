@@ -699,4 +699,171 @@ export class EconomyService {
       client.release();
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Daily reward
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Attempt to claim a daily reward.
+   * Returns the amount awarded, the new streak, and the next-claimable timestamp.
+   * Throws an error (with nextClaimAt) if the cooldown has not elapsed.
+   */
+  async claimDaily(
+    userId: Snowflake,
+    rewardBase: number,
+    cooldownHours: number,
+    streakBonus: number,
+    maxStreak: number
+  ): Promise<{ amount: Decimal; streak: number; nextClaimAt: Date }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await this.ensureUserRow(client, userId);
+
+      // Upsert daily_claims row and lock it
+      await client.query(
+        `INSERT INTO daily_claims (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`,
+        [userId]
+      );
+      const claimRow = await client.query<{
+        last_claimed_at: Date | null;
+        streak: number;
+      }>(
+        `SELECT last_claimed_at, streak FROM daily_claims WHERE user_id = $1 FOR UPDATE`,
+        [userId]
+      );
+
+      const row = claimRow.rows[0];
+      const now = new Date();
+
+      if (row.last_claimed_at) {
+        const nextClaimAt = new Date(
+          row.last_claimed_at.getTime() + cooldownHours * 3_600_000
+        );
+        if (now < nextClaimAt) {
+          await client.query('ROLLBACK');
+          const err = new Error(`Daily reward not ready yet`);
+          (err as Error & { nextClaimAt: Date }).nextClaimAt = nextClaimAt;
+          throw err;
+        }
+      }
+
+      // Calculate streak: reset if more than 48 h since last claim
+      let streak = row.streak ?? 0;
+      if (
+        row.last_claimed_at &&
+        now.getTime() - row.last_claimed_at.getTime() > 48 * 3_600_000
+      ) {
+        streak = 0;
+      }
+      streak = Math.min(streak + 1, maxStreak);
+
+      const amount = new Decimal(rewardBase + streakBonus * (streak - 1));
+      const nextClaimAt = new Date(now.getTime() + cooldownHours * 3_600_000);
+
+      await client.query(
+        `UPDATE daily_claims SET last_claimed_at = $1, streak = $2, total_claimed = total_claimed + $3 WHERE user_id = $4`,
+        [now.toISOString(), streak, amount.toFixed(2), userId]
+      );
+
+      const current = await this.ensureUserRow(client, userId);
+      const newBalance = current.plus(amount);
+      await this.updateBalance(client, userId, newBalance);
+      await this.recordTransaction(client, {
+        userId,
+        type: 'earn',
+        amount,
+        balanceBefore: current,
+        balanceAfter: newBalance,
+        reason: `Daily Reward (Streak ${streak})`,
+        sourceSystem: 'economy',
+        metadata: { streak },
+      });
+
+      await client.query('COMMIT');
+      return { amount, streak, nextClaimAt };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Admin: add / remove balance (distinct from setBalance which hard-sets)
+  // ---------------------------------------------------------------------------
+
+  async adminAddBalance(
+    userId: Snowflake,
+    amount: Decimal,
+    reason: string,
+    adminId: Snowflake
+  ): Promise<string> {
+    assertPositive(amount);
+    return this.addBalance(userId, amount, reason, 'admin', undefined, { adminId }, 'admin_add');
+  }
+
+  async adminRemoveBalance(
+    userId: Snowflake,
+    amount: Decimal,
+    reason: string,
+    adminId: Snowflake
+  ): Promise<string> {
+    assertPositive(amount);
+    return this.removeBalance(userId, amount, reason, 'admin', undefined, { adminId }, 'admin_remove');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Account freeze / unfreeze
+  // ---------------------------------------------------------------------------
+
+  async freezeUser(userId: Snowflake, adminId: Snowflake, reason: string): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO frozen_users (user_id, frozen_by, reason)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id) DO UPDATE SET frozen_by = EXCLUDED.frozen_by, reason = EXCLUDED.reason, frozen_at = NOW()`,
+      [userId, adminId, reason]
+    );
+    this.logger.warn('User frozen', { userId, commandName: 'admin' });
+  }
+
+  async unfreezeUser(userId: Snowflake, adminId: Snowflake): Promise<void> {
+    await this.pool.query(`DELETE FROM frozen_users WHERE user_id = $1`, [userId]);
+    this.logger.info('User unfrozen', { userId, commandName: 'admin' });
+  }
+
+  async isUserFrozen(userId: Snowflake): Promise<boolean> {
+    const result = await this.pool.query(
+      `SELECT 1 FROM frozen_users WHERE user_id = $1`,
+      [userId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rank helpers
+  // ---------------------------------------------------------------------------
+
+  async getUserRank(userId: Snowflake): Promise<{ rank: number; total: number }> {
+    const result = await this.pool.query<{ rank: string; total: string }>(
+      `SELECT
+         (SELECT COUNT(*) FROM user_balances WHERE balance > (SELECT COALESCE(balance, 0) FROM user_balances WHERE user_id = $1)) + 1 AS rank,
+         (SELECT COUNT(*) FROM user_balances) AS total`,
+      [userId]
+    );
+    return {
+      rank: parseInt(result.rows[0].rank, 10),
+      total: parseInt(result.rows[0].total, 10),
+    };
+  }
+
+  async getValidInviteCount(userId: Snowflake): Promise<number> {
+    const result = await this.pool.query<{ cnt: string }>(
+      `SELECT COUNT(*)::text AS cnt FROM invite_tracking WHERE inviter_user_id = $1 AND status = 'valid'`,
+      [userId]
+    );
+    return parseInt(result.rows[0]?.cnt ?? '0', 10);
+  }
 }
