@@ -1,16 +1,131 @@
 import fs from 'fs';
 import path from 'path';
-import { Pool, PoolClient } from 'pg';
+import { Pool, PoolClient, PoolConfig } from 'pg';
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    'Missing required environment variable: DATABASE_URL. On Railway: bot service → Variables → Add Reference → PostgreSQL → DATABASE_URL.'
-  );
+function normalizeDatabaseUrl(raw: string): string {
+  return raw.trim().replace(/^["']|["']$/g, '');
 }
 
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+function resolvePoolConfig(): PoolConfig {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) {
+    throw new Error(
+      'Missing DATABASE_URL. On Railway bot service: Variables → New Variable → Reference → PostgreSQL → DATABASE_PRIVATE_URL, and name the variable DATABASE_URL on the bot.'
+    );
+  }
+
+  const connectionString = normalizeDatabaseUrl(raw);
+
+  if (connectionString.includes('${{') || connectionString.includes('{{')) {
+    throw new Error(
+      'DATABASE_URL looks like an unresolved Railway template. Use Variables → Reference on the bot service, not a literal ${{...}} string.'
+    );
+  }
+
+  if (
+    connectionString.includes('localhost') ||
+    connectionString.includes('127.0.0.1') ||
+    connectionString.includes('user:password')
+  ) {
+    throw new Error(
+      'DATABASE_URL points to localhost or a placeholder. Delete it and add a Reference from your Railway PostgreSQL service.'
+    );
+  }
+
+  const isRailway =
+    Boolean(process.env.RAILWAY_ENVIRONMENT) ||
+    connectionString.includes('railway') ||
+    connectionString.includes('rlwy.net');
+
+  const sslDisabled = connectionString.includes('sslmode=disable');
+  const ssl =
+    !sslDisabled && (isRailway || connectionString.includes('sslmode=require'))
+      ? { rejectUnauthorized: false }
+      : undefined;
+
+  return { connectionString, ssl };
+}
+
+/** Safe connection details for logs — never logs password. */
+export function getDatabaseDiagnostics(): {
+  host: string;
+  port: string;
+  user: string;
+  database: string;
+  network: 'private' | 'public' | 'unknown';
+  passwordLength: number;
+  sslEnabled: boolean;
+  urlLooksValid: boolean;
+} {
+  const { connectionString, ssl } = resolvePoolConfig();
+  const network: 'private' | 'public' | 'unknown' = connectionString.includes('.railway.internal')
+    ? 'private'
+    : connectionString.includes('rlwy.net') || connectionString.includes('railway.app')
+      ? 'public'
+      : 'unknown';
+
+  try {
+    const normalized = connectionString.replace(/^postgres(ql)?:\/\//, 'http://');
+    const url = new URL(normalized);
+    return {
+      host: url.hostname,
+      port: url.port || '5432',
+      user: decodeURIComponent(url.username),
+      database: decodeURIComponent(url.pathname.slice(1).split('?')[0] || ''),
+      network,
+      passwordLength: decodeURIComponent(url.password || '').length,
+      sslEnabled: Boolean(ssl),
+      urlLooksValid: true,
+    };
+  } catch {
+    return {
+      host: 'unparseable',
+      port: '?',
+      user: '?',
+      database: '?',
+      network,
+      passwordLength: 0,
+      sslEnabled: Boolean(ssl),
+      urlLooksValid: false,
+    };
+  }
+}
+
+export function logDatabaseDiagnostics(): void {
+  const d = getDatabaseDiagnostics();
+  console.log(
+    `[db] target host=${d.host} port=${d.port} user=${d.user} database=${d.database} network=${d.network} ssl=${d.sslEnabled} passwordLength=${d.passwordLength} urlValid=${d.urlLooksValid}`
+  );
+
+  if (d.network === 'public' && process.env.RAILWAY_ENVIRONMENT) {
+    console.warn(
+      '[db] Using a PUBLIC Postgres URL inside Railway. If auth fails, set bot DATABASE_URL to a Reference of PostgreSQL → DATABASE_PRIVATE_URL (variable name on bot stays DATABASE_URL).'
+    );
+  }
+
+  if (!d.urlLooksValid) {
+    console.warn(
+      '[db] DATABASE_URL could not be parsed. If the password has special characters, use Railway Reference instead of copy-paste.'
+    );
+  }
+
+  if (d.passwordLength === 0) {
+    console.warn('[db] DATABASE_URL has no password segment — connection will fail.');
+  }
+}
+
+const poolConfig = resolvePoolConfig();
+
+export const pool = new Pool(poolConfig);
+
+export async function verifyDatabaseConnection(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query('SELECT 1');
+  } finally {
+    client.release();
+  }
+}
 
 export async function closePool(): Promise<void> {
   await pool.end();

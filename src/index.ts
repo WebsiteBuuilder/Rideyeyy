@@ -7,7 +7,7 @@ import {
   Routes,
 } from 'discord.js';
 import { config } from './config';
-import { pool, runMigrations, closePool } from './database';
+import { pool, runMigrations, closePool, logDatabaseDiagnostics, verifyDatabaseConnection } from './database';
 import { LoggerService } from './services/LoggerService';
 import { EconomyService } from './services/EconomyService';
 import { UserService } from './services/UserService';
@@ -144,6 +144,21 @@ async function handleInteraction(interaction: Interaction, services: AppServices
 
 async function main(): Promise<void> {
   logger.info('Starting Rideey bot...');
+  logDatabaseDiagnostics();
+
+  try {
+    await verifyDatabaseConnection();
+    logger.info('Database connection verified');
+  } catch (err) {
+    const pgErr = err as { code?: string };
+    if (pgErr.code === '28P01') {
+      logger.error(
+        'PostgreSQL rejected the password in DATABASE_URL. On Railway: delete DATABASE_URL on the bot, then add Reference → PostgreSQL → DATABASE_PRIVATE_URL and name it DATABASE_URL. Or reset Postgres credentials in Railway and redeploy both services.',
+        { commandName: 'main' }
+      );
+    }
+    throw err;
+  }
 
   await runMigrations();
   const services = buildServices();

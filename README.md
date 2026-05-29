@@ -50,13 +50,21 @@ REGISTER_COMMANDS=true npm run dev
 
 1. Create a new project on [Railway](https://railway.app).
 2. Add **PostgreSQL** to the project (separate service).
-3. On your **bot** service → **Variables** → **Add Reference** → PostgreSQL → **`DATABASE_URL`** only. Do **not** type a connection string manually.
-4. Connect GitHub repo [WebsiteBuuilder/Rideyeyy](https://github.com/WebsiteBuuilder/Rideyeyy), branch `main`.
+3. On your **bot** service → **Variables**:
+   - Delete any existing `DATABASE_URL`
+   - **New Variable** → **Reference** → PostgreSQL service → select **`DATABASE_PRIVATE_URL`**
+   - Name the variable on the bot: **`DATABASE_URL`** (our code reads this name; the value comes from private URL)
+4. Connect GitHub repo, branch `main`.
 5. Set Discord env vars (`DISCORD_TOKEN`, `CLIENT_ID`, `GUILD_ID`, `ADMIN_ROLE_ID`, etc.).
 6. Set `REGISTER_COMMANDS=true` for the first deploy, then `false`.
 7. Build: `npm run build` | Start: `npm start`
 
-**Error `password authentication failed for user "postgres"`** — your bot has the wrong `DATABASE_URL`. Delete any manual `DATABASE_URL` variable and use **Add Reference** from the Postgres service only.
+**Error `password authentication failed for user "postgres"`**
+
+1. Bot `DATABASE_URL` must **Reference** Postgres → **`DATABASE_PRIVATE_URL`** (not the public URL).
+2. Delete any duplicate/manual `DATABASE_URL` on the bot service.
+3. In Railway Postgres service → **Settings** → **Reset Credentials** → redeploy bot.
+4. Check deploy logs for `[db] target host=... network=private` — if `network=public`, switch to `DATABASE_PRIVATE_URL` reference.
 
 Migrations run automatically on bot startup.
 
