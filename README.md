@@ -49,12 +49,14 @@ REGISTER_COMMANDS=true npm run dev
 ### 4. Railway Deployment
 
 1. Create a new project on [Railway](https://railway.app).
-2. Add **PostgreSQL** plugin — `DATABASE_URL` is injected automatically.
-3. Connect your GitHub repo or deploy from CLI.
-4. Set all env vars from `.env.example` in Railway Variables.
-5. Set `REGISTER_COMMANDS=true` for the first deploy, then set back to `false`.
-6. Build command: `npm run build`
-7. Start command: `npm start`
+2. Add **PostgreSQL** to the project (separate service).
+3. On your **bot** service → **Variables** → **Add Reference** → select Postgres → pick **`DATABASE_PRIVATE_URL`** (or `DATABASE_URL`). Do **not** type `postgresql://user:password@localhost...` manually.
+4. Connect GitHub repo [WebsiteBuuilder/Rideyeyy](https://github.com/WebsiteBuuilder/Rideyeyy), branch `main`.
+5. Set Discord env vars (`DISCORD_TOKEN`, `CLIENT_ID`, `GUILD_ID`, `ADMIN_ROLE_ID`, etc.).
+6. Set `REGISTER_COMMANDS=true` for the first deploy, then `false`.
+7. Build: `npm run build` | Start: `npm start`
+
+**Error `password authentication failed for user "postgres"`** — your bot has the wrong `DATABASE_URL`. Delete any manual `DATABASE_URL` variable and use **Add Reference** from the Postgres service only.
 
 Migrations run automatically on bot startup.
 
