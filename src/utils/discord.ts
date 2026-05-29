@@ -4,7 +4,6 @@ import {
   ButtonInteraction,
   ButtonStyle,
   ChatInputCommandInteraction,
-  Collection,
   ComponentType,
   GuildMember,
   MessageComponentInteraction,
@@ -146,8 +145,4 @@ export function memberFromInteraction(interaction: ChatInputCommandInteraction):
   return interaction.member as GuildMember;
 }
 
-export function collectCommandBuilders(
-  modules: Array<{ data: SlashCommandData }>
-): SlashCommandData[] {
-  return modules.map((m) => m.data);
-}
+
