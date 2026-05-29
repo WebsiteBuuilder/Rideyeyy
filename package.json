@@ -7,7 +7,7 @@
     "build": "tsc && node scripts/copy-migrations.js",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "migrate": "npm run build && node -e \"require('dotenv').config(); const { initDatabase, runMigrations, closePool } = require('./dist/database'); (async () => { await initDatabase(); await runMigrations(); await closePool(); process.exit(0); })().catch((e) => { console.error(e); process.exit(1); });\""
+    "migrate": "npm run build && node -e \"require('dotenv').config(); const { runMigrations, closePool } = require('./dist/database'); (async () => { await runMigrations(); await closePool(); process.exit(0); })().catch((e) => { console.error(e); process.exit(1); });\""
   },
   "engines": {
     "node": ">=18.0.0"
@@ -18,7 +18,6 @@
     "dotenv": "^16.4.5",
     "node-cron": "^3.0.3",
     "pg": "^8.13.1",
-    "pg-connection-string": "^2.13.0",
     "winston": "^3.17.0"
   },
   "devDependencies": {

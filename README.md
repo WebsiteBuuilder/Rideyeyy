@@ -50,20 +50,10 @@ REGISTER_COMMANDS=true npm run dev
 
 1. Create a new project on [Railway](https://railway.app).
 2. Add **PostgreSQL** to the project.
-3. **Connect Postgres to the bot (fixes 28P01 auth errors):**
-   - Open the **PostgreSQL** service → **Connect**
-   - Select your **bot** service
-   - Railway injects `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` on the bot
-4. On the **bot** → **Variables** → delete any manual `DATABASE_URL` (optional once PG* vars exist)
-5. Connect GitHub repo [WebsiteBuuilder/Rideyeyy](https://github.com/WebsiteBuuilder/Rideyeyy), branch `main`
-6. Set Discord env vars and `REGISTER_COMMANDS=true` for first deploy
-7. Logs should show: `[db] mode=railway-pg-vars` and `Database connection verified`
-
-**Error `password authentication failed (28P01)`**
-
-1. PostgreSQL → **Connect** → select bot (not only a DATABASE_URL reference)
-2. Delete manual `DATABASE_URL` on bot
-3. Postgres → **Settings** → **Reset Credentials** → **Connect** again → redeploy bot
+3. On the **bot** service → **Variables** → **Add Reference** → PostgreSQL → **`DATABASE_URL`**
+4. Set `NODE_ENV=production` on the bot service (Railway often sets this automatically).
+5. Set Discord env vars and `REGISTER_COMMANDS=true` for the first deploy.
+6. Do **not** set `PGHOST`, `PGPASSWORD`, or other PG* vars — only `DATABASE_URL`.
 
 Migrations run automatically on bot startup.
 

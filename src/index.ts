@@ -1,3 +1,7 @@
+import dotenv from 'dotenv';
+
+dotenv.config();
+
 import {
   Client,
   Events,
@@ -7,7 +11,7 @@ import {
   Routes,
 } from 'discord.js';
 import { config } from './config';
-import { getPool, initDatabase, runMigrations, closePool } from './database';
+import { pool, runMigrations, closePool } from './database';
 import { LoggerService } from './services/LoggerService';
 import { EconomyService } from './services/EconomyService';
 import { UserService } from './services/UserService';
@@ -55,7 +59,6 @@ async function registerCommands(): Promise<void> {
 }
 
 function buildServices(): AppServices {
-  const pool = getPool();
   const economy = new EconomyService(pool, logger);
   const user = new UserService(pool, logger, economy);
   const backup = new BackupService(pool, economy, logger);
@@ -145,8 +148,6 @@ async function handleInteraction(interaction: Interaction, services: AppServices
 
 async function main(): Promise<void> {
   logger.info('Starting Rideey bot...');
-
-  await initDatabase();
 
   await runMigrations();
   const services = buildServices();
