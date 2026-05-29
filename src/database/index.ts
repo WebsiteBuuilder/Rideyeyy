@@ -3,10 +3,26 @@ import path from 'path';
 import { Pool, PoolClient, PoolConfig } from 'pg';
 import parse from 'pg-connection-string';
 
-export type ConnectionMode = 'railway-pg-vars' | 'database-url';
+export type ConnectionMode =
+  | 'railway-pg-vars'
+  | 'database-private-url'
+  | 'database-url'
+  | 'database-public-url';
 
-function normalizeDatabaseUrl(raw: string): string {
-  return raw.trim().replace(/^["']|["']$/g, '');
+function cleanEnv(value: string | undefined): string | undefined {
+  if (value == null || value === '') return undefined;
+  let s = value.trim().replace(/\r$/, '');
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith("'") && s.endsWith("'"))
+  ) {
+    s = s.slice(1, -1).trim();
+  }
+  return s || undefined;
+}
+
+function isUnresolvedTemplate(value: string): boolean {
+  return value.includes('${{') || value.includes('{{');
 }
 
 function sslForHost(host: string | undefined): false | { rejectUnauthorized: boolean } {
@@ -25,88 +41,120 @@ function appendSslModeForInternal(url: string): string {
   return url + (url.includes('?') ? '&' : '?') + 'sslmode=disable';
 }
 
-function validateDatabaseUrl(url: string): void {
-  if (url.includes('${{') || url.includes('{{')) {
-    throw new Error('DATABASE_URL is unresolved. Use Railway Variable Reference, not a literal template.');
-  }
-  if (url.includes('localhost') || url.includes('127.0.0.1') || url.includes('user:password')) {
-    throw new Error('DATABASE_URL is a placeholder. Use Railway Postgres → Connect or Variable Reference.');
-  }
+function appendSslModeRequire(url: string): string {
+  if (url.includes('sslmode=')) return url;
+  return url + (url.includes('?') ? '&' : '?') + 'sslmode=require';
 }
 
-/**
- * Best for Railway: raw PGPASSWORD (from Connect or Reference) cannot go stale like URL strings.
- */
-function configFromPgVars(): PoolConfig | null {
-  const password = process.env.PGPASSWORD?.trim();
+interface CandidateConfig {
+  mode: ConnectionMode;
+  config: PoolConfig;
+}
+
+/** All PG* must come from the same Postgres service — never mix with DATABASE_URL fields. */
+function candidateFromPgVars(): CandidateConfig | null {
+  const host = cleanEnv(process.env.PGHOST);
+  const password = cleanEnv(process.env.PGPASSWORD);
+  const user = cleanEnv(process.env.PGUSER);
+  const database = cleanEnv(process.env.PGDATABASE);
+  const portRaw = cleanEnv(process.env.PGPORT);
+
   if (!password) return null;
 
-  let host = process.env.PGHOST?.trim();
-  let port = parseInt(process.env.PGPORT?.trim() || '5432', 10);
-  let user = process.env.PGUSER?.trim() || 'postgres';
-  let database = process.env.PGDATABASE?.trim() || 'railway';
-
-  if (!host && process.env.DATABASE_URL) {
-    const parsed = parse.parse(normalizeDatabaseUrl(process.env.DATABASE_URL));
-    host = parsed.host ?? undefined;
-    if (parsed.port) port = parseInt(String(parsed.port), 10);
-    if (parsed.user) user = parsed.user;
-    if (parsed.database) database = parsed.database;
-
-    if (parsed.password && parsed.password !== password) {
-      console.warn(
-        '[db] DATABASE_URL password does not match PGPASSWORD — using PGPASSWORD (DATABASE_URL may be stale; delete it or update the reference).'
-      );
-    }
+  if (!host || !user || !database) {
+    console.warn(
+      `[db] PGPASSWORD is set but missing PGHOST/PGUSER/PGDATABASE (have host=${Boolean(host)} user=${Boolean(user)} database=${Boolean(database)}). Add all 5 PG* references from the same Postgres service, or delete PGPASSWORD and use DATABASE_PRIVATE_URL only.`
+    );
+    return null;
   }
 
-  if (!host) return null;
+  if (isUnresolvedTemplate(password) || isUnresolvedTemplate(host)) {
+    throw new Error('PG* variables look like unresolved Railway templates. Use Variable Reference UI, do not type ${{...}} manually.');
+  }
 
   return {
-    host,
-    port,
-    user,
-    password,
-    database,
-    ssl: sslForHost(host),
+    mode: 'railway-pg-vars',
+    config: {
+      host,
+      port: portRaw ? parseInt(portRaw, 10) : 5432,
+      user,
+      password,
+      database,
+      ssl: sslForHost(host),
+    },
   };
 }
 
-/** Pass DATABASE_URL directly to pg — no field splitting that can corrupt credentials. */
-function configFromDatabaseUrl(): PoolConfig {
-  const raw = process.env.DATABASE_URL;
-  if (!raw) {
-    throw new Error(
-      'Missing database config. Railway: PostgreSQL → Connect → select bot service. Or set DATABASE_URL as a Reference (not a pasted string).'
-    );
-  }
+function candidateFromUrl(
+  mode: ConnectionMode,
+  raw: string | undefined,
+  transform: (url: string) => string
+): CandidateConfig | null {
+  const value = cleanEnv(raw);
+  if (!value || isUnresolvedTemplate(value)) return null;
+  if (value.includes('localhost') || value.includes('user:password')) return null;
 
-  const connectionString = appendSslModeForInternal(normalizeDatabaseUrl(raw));
-  validateDatabaseUrl(connectionString);
+  return {
+    mode,
+    config: { connectionString: transform(value) },
+  };
+}
 
-  return { connectionString };
+function buildCandidates(): CandidateConfig[] {
+  const candidates: CandidateConfig[] = [];
+
+  const pgVars = candidateFromPgVars();
+  if (pgVars) candidates.push(pgVars);
+
+  // Railway Connect often injects DATABASE_PRIVATE_URL — not DATABASE_URL
+  const privateUrl = candidateFromUrl(
+    'database-private-url',
+    process.env.DATABASE_PRIVATE_URL,
+    appendSslModeForInternal
+  );
+  if (privateUrl) candidates.push(privateUrl);
+
+  const databaseUrl = candidateFromUrl(
+    'database-url',
+    process.env.DATABASE_URL,
+    appendSslModeForInternal
+  );
+  if (databaseUrl) candidates.push(databaseUrl);
+
+  const publicUrl = candidateFromUrl(
+    'database-public-url',
+    process.env.DATABASE_PUBLIC_URL,
+    appendSslModeRequire
+  );
+  if (publicUrl) candidates.push(publicUrl);
+
+  return candidates;
 }
 
 let connectionMode: ConnectionMode = 'database-url';
+let poolInstance: Pool | null = null;
 
-function resolvePoolConfig(): PoolConfig {
-  const fromPg = configFromPgVars();
-  if (fromPg) {
-    connectionMode = 'railway-pg-vars';
-    return fromPg;
-  }
+export function logDatabaseEnvChecklist(): void {
+  const keys = [
+    'PGHOST',
+    'PGPORT',
+    'PGUSER',
+    'PGPASSWORD',
+    'PGDATABASE',
+    'DATABASE_URL',
+    'DATABASE_PRIVATE_URL',
+    'DATABASE_PUBLIC_URL',
+    'RAILWAY_ENVIRONMENT',
+  ] as const;
 
-  connectionMode = 'database-url';
-  return configFromDatabaseUrl();
-}
+  const status = keys.map((k) => {
+    const v = cleanEnv(process.env[k]);
+    const set = Boolean(v);
+    const bad = v ? isUnresolvedTemplate(v) : false;
+    return `${k}=${set ? (bad ? 'UNRESOLVED_TEMPLATE' : 'set') : 'missing'}`;
+  });
 
-function parsedFromEnv(): ReturnType<typeof parse.parse> | null {
-  if (!process.env.DATABASE_URL) return null;
-  try {
-    return parse.parse(normalizeDatabaseUrl(process.env.DATABASE_URL));
-  } catch {
-    return null;
-  }
+  console.log(`[db] env checklist: ${status.join(' ')}`);
 }
 
 export function getDatabaseDiagnostics(): {
@@ -115,73 +163,122 @@ export function getDatabaseDiagnostics(): {
   port: string;
   user: string;
   database: string;
-  network: 'private' | 'public' | 'unknown';
   passwordLength: number;
-  sslEnabled: boolean;
-  hasPgPassword: boolean;
 } {
-  try {
-    const config = resolvePoolConfig();
-    const parsed = parsedFromEnv();
-    const host =
-      config.host ??
-      parsed?.host ??
-      (config.connectionString?.includes('.railway.internal') ? 'postgres.railway.internal' : 'unknown');
-
-    const network: 'private' | 'public' | 'unknown' = host.endsWith('.railway.internal')
-      ? 'private'
-      : host.includes('rlwy.net') || host.includes('railway.app')
-        ? 'public'
-        : 'unknown';
-
-    const passwordLength =
-      (config.password ?? parsed?.password ?? '').length ||
-      (process.env.PGPASSWORD?.trim().length ?? 0);
-
+  const candidates = buildCandidates();
+  const first = candidates[0];
+  if (!first) {
     return {
       mode: connectionMode,
-      host,
-      port: String(config.port ?? parsed?.port ?? 5432),
-      user: config.user ?? parsed?.user ?? 'postgres',
-      database: config.database ?? parsed?.database ?? 'railway',
-      network,
-      passwordLength,
-      sslEnabled: false,
-      hasPgPassword: Boolean(process.env.PGPASSWORD?.trim()),
-    };
-  } catch {
-    return {
-      mode: connectionMode,
-      host: 'error',
+      host: 'none',
       port: '?',
       user: '?',
       database: '?',
-      network: 'unknown',
       passwordLength: 0,
-      sslEnabled: false,
-      hasPgPassword: false,
     };
   }
+
+  const c = first.config;
+  if (c.connectionString) {
+    try {
+      const parsed = parse.parse(c.connectionString);
+      return {
+        mode: first.mode,
+        host: parsed.host ?? '?',
+        port: String(parsed.port ?? 5432),
+        user: parsed.user ?? '?',
+        database: parsed.database ?? '?',
+        passwordLength: (parsed.password ?? '').length,
+      };
+    } catch {
+      return {
+        mode: first.mode,
+        host: 'parse-error',
+        port: '?',
+        user: '?',
+        database: '?',
+        passwordLength: 0,
+      };
+    }
+  }
+
+  return {
+    mode: first.mode,
+    host: c.host ?? '?',
+    port: String(c.port ?? 5432),
+    user: c.user ?? '?',
+    database: c.database ?? '?',
+    passwordLength: (c.password ?? '').length,
+  };
 }
 
 export function logDatabaseDiagnostics(): void {
   const d = getDatabaseDiagnostics();
   console.log(
-    `[db] mode=${d.mode} host=${d.host} port=${d.port} user=${d.user} database=${d.database} network=${d.network} passwordLength=${d.passwordLength} hasPgPassword=${d.hasPgPassword}`
+    `[db] will try mode=${d.mode} first host=${d.host} user=${d.user} database=${d.database} passwordLength=${d.passwordLength} candidateCount=${buildCandidates().length}`
   );
-
-  if (d.mode === 'database-url' && !d.hasPgPassword) {
-    console.warn(
-      '[db] Only DATABASE_URL is set. If auth fails, the URL password is stale. Fix: Postgres → Connect → bot, OR add PGPASSWORD Reference on bot, OR reset Postgres credentials and update DATABASE_URL Reference (never paste manually).'
-    );
-  }
 }
 
-const poolConfig = resolvePoolConfig();
-export const pool = new Pool(poolConfig);
+export async function initDatabase(): Promise<void> {
+  if (poolInstance) return;
+
+  logDatabaseEnvChecklist();
+  logDatabaseDiagnostics();
+
+  const candidates = buildCandidates();
+  if (candidates.length === 0) {
+    throw new Error(
+      'No database configuration found. On Railway bot service add References from PostgreSQL: DATABASE_PRIVATE_URL (easiest), or all of PGHOST, PGUSER, PGPASSWORD, PGDATABASE, PGPORT. Delete any pasted/stale DATABASE_URL.'
+    );
+  }
+
+  const errors: string[] = [];
+
+  for (const candidate of candidates) {
+    const testPool = new Pool(candidate.config);
+    try {
+      const client = await testPool.connect();
+      await client.query('SELECT 1');
+      client.release();
+
+      poolInstance = testPool;
+      connectionMode = candidate.mode;
+      console.log(`[db] connected successfully via ${candidate.mode}`);
+      return;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`${candidate.mode}: ${msg}`);
+      await testPool.end().catch(() => {});
+    }
+  }
+
+  throw new Error(
+    `All database connection attempts failed:\n${errors.join('\n')}\n\n` +
+      'Railway fix: (1) Delete DATABASE_URL, PGPASSWORD, and all PG* on the BOT service. ' +
+      '(2) Postgres → Connect → select bot. ' +
+      '(3) Or add ONE reference: DATABASE_PRIVATE_URL on the bot. ' +
+      '(4) Postgres Settings → Reset Credentials → Connect again → redeploy bot.'
+  );
+}
+
+export function getPool(): Pool {
+  if (!poolInstance) {
+    throw new Error('Database not initialized. Call initDatabase() first.');
+  }
+  return poolInstance;
+}
+
+/** @deprecated use getPool() after initDatabase() */
+export const pool = new Proxy({} as Pool, {
+  get(_target, prop) {
+    const p = getPool() as unknown as Record<string | symbol, unknown>;
+    const value = p[prop];
+    return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(getPool()) : value;
+  },
+});
 
 export async function verifyDatabaseConnection(): Promise<void> {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     await client.query('SELECT 1');
   } finally {
@@ -190,11 +287,14 @@ export async function verifyDatabaseConnection(): Promise<void> {
 }
 
 export async function closePool(): Promise<void> {
-  await pool.end();
+  if (poolInstance) {
+    await poolInstance.end();
+    poolInstance = null;
+  }
 }
 
 export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     await client.query('BEGIN');
     const result = await fn(client);
@@ -217,7 +317,8 @@ function getMigrationsDir(): string {
 }
 
 export async function runMigrations(): Promise<void> {
-  await pool.query(`
+  const db = getPool();
+  await db.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version VARCHAR(255) PRIMARY KEY,
       applied_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
@@ -232,13 +333,13 @@ export async function runMigrations(): Promise<void> {
 
   for (const file of files) {
     const version = file;
-    const applied = await pool.query('SELECT 1 FROM schema_migrations WHERE version = $1', [version]);
+    const applied = await db.query('SELECT 1 FROM schema_migrations WHERE version = $1', [version]);
     if (applied.rowCount && applied.rowCount > 0) {
       continue;
     }
 
     const sql = fs.readFileSync(path.join(dir, file), 'utf-8');
-    const client = await pool.connect();
+    const client = await db.connect();
     try {
       await client.query('BEGIN');
       await client.query(sql);

@@ -7,7 +7,7 @@ import {
   Routes,
 } from 'discord.js';
 import { config } from './config';
-import { pool, runMigrations, closePool, logDatabaseDiagnostics, verifyDatabaseConnection } from './database';
+import { getPool, initDatabase, runMigrations, closePool } from './database';
 import { LoggerService } from './services/LoggerService';
 import { EconomyService } from './services/EconomyService';
 import { UserService } from './services/UserService';
@@ -55,6 +55,7 @@ async function registerCommands(): Promise<void> {
 }
 
 function buildServices(): AppServices {
+  const pool = getPool();
   const economy = new EconomyService(pool, logger);
   const user = new UserService(pool, logger, economy);
   const backup = new BackupService(pool, economy, logger);
@@ -144,21 +145,8 @@ async function handleInteraction(interaction: Interaction, services: AppServices
 
 async function main(): Promise<void> {
   logger.info('Starting Rideey bot...');
-  logDatabaseDiagnostics();
 
-  try {
-    await verifyDatabaseConnection();
-    logger.info('Database connection verified');
-  } catch (err) {
-    const pgErr = err as { code?: string };
-    if (pgErr.code === '28P01') {
-      logger.error(
-        'PostgreSQL password rejected (28P01). FIX: In Railway open PostgreSQL → click Connect → select your bot service. This injects PGHOST/PGPASSWORD directly. Then delete any manual DATABASE_URL on the bot and redeploy. If still failing: Postgres Settings → Reset Credentials → Connect again → redeploy bot.',
-        { commandName: 'main' }
-      );
-    }
-    throw err;
-  }
+  await initDatabase();
 
   await runMigrations();
   const services = buildServices();

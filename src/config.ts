@@ -1,6 +1,9 @@
 import dotenv from 'dotenv';
 
-dotenv.config();
+// Railway injects env at runtime — never load .env over those values in production.
+if (!process.env.RAILWAY_ENVIRONMENT) {
+  dotenv.config();
+}
 
 function requireEnv(key: string): string {
   const value = process.env[key];
