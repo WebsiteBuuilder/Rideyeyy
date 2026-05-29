@@ -1,65 +1,54 @@
 import fs from 'fs';
 import path from 'path';
 import { Pool, PoolClient, PoolConfig } from 'pg';
+import parse from 'pg-connection-string';
+
+export type ConnectionMode = 'railway-pg-vars' | 'database-url';
 
 function normalizeDatabaseUrl(raw: string): string {
   return raw.trim().replace(/^["']|["']$/g, '');
 }
 
-interface ParsedDatabaseUrl {
-  host: string;
-  port: number;
-  user: string;
-  password: string;
-  database: string;
-  ssl: false | { rejectUnauthorized: boolean };
+function sslForHost(host: string | undefined): false | { rejectUnauthorized: boolean } {
+  if (!host) return false;
+  if (host.endsWith('.railway.internal')) return false;
+  if (host.includes('rlwy.net') || host.includes('railway.app')) {
+    return { rejectUnauthorized: false };
+  }
+  return false;
 }
 
-function parseDatabaseUrl(connectionString: string): ParsedDatabaseUrl {
-  const normalized = connectionString.replace(/^postgres(ql)?:\/\//, 'http://');
-  const url = new URL(normalized);
-
-  const host = url.hostname;
-  const isPrivateRailway = host.endsWith('.railway.internal');
-
-  // Railway private network Postgres does NOT use SSL — forcing it causes 28P01 auth failures.
-  let ssl: ParsedDatabaseUrl['ssl'];
-  if (isPrivateRailway || connectionString.includes('sslmode=disable')) {
-    ssl = false;
-  } else if (
-    connectionString.includes('sslmode=require') ||
-    connectionString.includes('rlwy.net') ||
-    connectionString.includes('railway.app')
-  ) {
-    ssl = { rejectUnauthorized: false };
-  } else {
-    ssl = false;
-  }
+/**
+ * Railway injects raw PG* vars when you reference them from the Postgres service.
+ * This avoids URL-encoding bugs that cause 28P01 with DATABASE_URL alone.
+ */
+function configFromPgVars(): PoolConfig | null {
+  const host = process.env.PGHOST?.trim();
+  const password = process.env.PGPASSWORD?.trim();
+  if (!host || !password) return null;
 
   return {
     host,
-    port: url.port ? parseInt(url.port, 10) : 5432,
-    user: decodeURIComponent(url.username),
-    password: decodeURIComponent(url.password),
-    database: decodeURIComponent(url.pathname.replace(/^\//, '').split('?')[0]),
-    ssl,
+    port: parseInt(process.env.PGPORT?.trim() || '5432', 10),
+    user: process.env.PGUSER?.trim() || 'postgres',
+    password,
+    database: process.env.PGDATABASE?.trim() || 'railway',
+    ssl: sslForHost(host),
   };
 }
 
-function resolvePoolConfig(): PoolConfig {
+function configFromDatabaseUrl(): PoolConfig {
   const raw = process.env.DATABASE_URL;
   if (!raw) {
     throw new Error(
-      'Missing DATABASE_URL. On Railway bot service: Variables → Reference → PostgreSQL → DATABASE_PRIVATE_URL, named DATABASE_URL on the bot.'
+      'No database credentials found. On Railway: Postgres service → Connect → select your bot service (injects PGHOST/PGPASSWORD), OR add References for PGHOST, PGPASSWORD, PGUSER, PGDATABASE, PGPORT on the bot.'
     );
   }
 
   const connectionString = normalizeDatabaseUrl(raw);
 
   if (connectionString.includes('${{') || connectionString.includes('{{')) {
-    throw new Error(
-      'DATABASE_URL looks like an unresolved Railway template. Use Variables → Reference on the bot service.'
-    );
+    throw new Error('DATABASE_URL is an unresolved Railway template. Use Variable References or Postgres → Connect.');
   }
 
   if (
@@ -67,25 +56,49 @@ function resolvePoolConfig(): PoolConfig {
     connectionString.includes('127.0.0.1') ||
     connectionString.includes('user:password')
   ) {
-    throw new Error(
-      'DATABASE_URL points to localhost or a placeholder. Use a Railway PostgreSQL reference instead.'
-    );
+    throw new Error('DATABASE_URL is a placeholder. Use Railway Postgres Connect or PG* variable references.');
   }
 
-  const parsed = parseDatabaseUrl(connectionString);
+  const parsed = parse.parse(connectionString);
+  const host = parsed.host ?? undefined;
+
+  if (host && parsed.user && parsed.password && parsed.database) {
+    return {
+      host,
+      port: parsed.port ? parseInt(String(parsed.port), 10) : 5432,
+      user: parsed.user,
+      password: parsed.password,
+      database: parsed.database,
+      ssl: sslForHost(host),
+    };
+  }
+
+  let urlWithSsl = connectionString;
+  if (host?.endsWith('.railway.internal') && !urlWithSsl.includes('sslmode=')) {
+    urlWithSsl += (urlWithSsl.includes('?') ? '&' : '?') + 'sslmode=disable';
+  }
 
   return {
-    host: parsed.host,
-    port: parsed.port,
-    user: parsed.user,
-    password: parsed.password,
-    database: parsed.database,
-    ssl: parsed.ssl,
+    connectionString: urlWithSsl,
+    ssl: sslForHost(host),
   };
+}
+
+let connectionMode: ConnectionMode = 'database-url';
+
+function resolvePoolConfig(): PoolConfig {
+  const fromPg = configFromPgVars();
+  if (fromPg) {
+    connectionMode = 'railway-pg-vars';
+    return fromPg;
+  }
+  connectionMode = 'database-url';
+  return configFromDatabaseUrl();
 }
 
 /** Safe connection details for logs — never logs password. */
 export function getDatabaseDiagnostics(): {
+  mode: ConnectionMode;
   host: string;
   port: string;
   user: string;
@@ -93,37 +106,39 @@ export function getDatabaseDiagnostics(): {
   network: 'private' | 'public' | 'unknown';
   passwordLength: number;
   sslEnabled: boolean;
-  urlLooksValid: boolean;
 } {
   try {
     const config = resolvePoolConfig();
-    const host = config.host ?? 'unknown';
+    const host = config.host ?? (config.connectionString?.includes('.railway.internal') ? 'postgres.railway.internal' : 'connection-string');
     const network: 'private' | 'public' | 'unknown' = host.endsWith('.railway.internal')
       ? 'private'
       : host.includes('rlwy.net') || host.includes('railway.app')
         ? 'public'
         : 'unknown';
 
+    const ssl = config.ssl;
+    const sslEnabled = ssl !== false && ssl !== undefined;
+
     return {
+      mode: connectionMode,
       host,
       port: String(config.port ?? 5432),
-      user: config.user ?? '?',
-      database: config.database ?? '?',
+      user: config.user ?? 'postgres',
+      database: config.database ?? 'railway',
       network,
       passwordLength: (config.password ?? '').length,
-      sslEnabled: config.ssl !== false && config.ssl !== undefined,
-      urlLooksValid: true,
+      sslEnabled,
     };
   } catch {
     return {
-      host: 'unparseable',
+      mode: connectionMode,
+      host: 'error',
       port: '?',
       user: '?',
       database: '?',
       network: 'unknown',
       passwordLength: 0,
       sslEnabled: false,
-      urlLooksValid: false,
     };
   }
 }
@@ -131,20 +146,21 @@ export function getDatabaseDiagnostics(): {
 export function logDatabaseDiagnostics(): void {
   const d = getDatabaseDiagnostics();
   console.log(
-    `[db] target host=${d.host} port=${d.port} user=${d.user} database=${d.database} network=${d.network} ssl=${d.sslEnabled} passwordLength=${d.passwordLength} urlValid=${d.urlLooksValid}`
+    `[db] mode=${d.mode} host=${d.host} port=${d.port} user=${d.user} database=${d.database} network=${d.network} ssl=${d.sslEnabled} passwordLength=${d.passwordLength}`
   );
 
-  if (d.network === 'private' && d.sslEnabled) {
-    console.warn('[db] SSL enabled for private Railway host — this should not happen after the latest fix.');
+  if (d.mode === 'database-url' && process.env.RAILWAY_ENVIRONMENT) {
+    console.warn(
+      '[db] Using DATABASE_URL only. For reliable Railway auth, use Postgres → Connect → your bot service (adds PGHOST/PGPASSWORD), or reference PGHOST + PGPASSWORD on the bot.'
+    );
   }
 
   if (d.passwordLength === 0) {
-    console.warn('[db] DATABASE_URL has no password segment — connection will fail.');
+    console.warn('[db] No password resolved — connection will fail.');
   }
 }
 
 const poolConfig = resolvePoolConfig();
-
 export const pool = new Pool(poolConfig);
 
 export async function verifyDatabaseConnection(): Promise<void> {

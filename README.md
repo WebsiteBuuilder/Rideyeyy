@@ -49,22 +49,21 @@ REGISTER_COMMANDS=true npm run dev
 ### 4. Railway Deployment
 
 1. Create a new project on [Railway](https://railway.app).
-2. Add **PostgreSQL** to the project (separate service).
-3. On your **bot** service → **Variables**:
-   - Delete any existing `DATABASE_URL`
-   - **New Variable** → **Reference** → PostgreSQL service → select **`DATABASE_PRIVATE_URL`**
-   - Name the variable on the bot: **`DATABASE_URL`** (our code reads this name; the value comes from private URL)
-4. Connect GitHub repo, branch `main`.
-5. Set Discord env vars (`DISCORD_TOKEN`, `CLIENT_ID`, `GUILD_ID`, `ADMIN_ROLE_ID`, etc.).
-6. Set `REGISTER_COMMANDS=true` for the first deploy, then `false`.
-7. Build: `npm run build` | Start: `npm start`
+2. Add **PostgreSQL** to the project.
+3. **Connect Postgres to the bot (fixes 28P01 auth errors):**
+   - Open the **PostgreSQL** service → **Connect**
+   - Select your **bot** service
+   - Railway injects `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` on the bot
+4. On the **bot** → **Variables** → delete any manual `DATABASE_URL` (optional once PG* vars exist)
+5. Connect GitHub repo [WebsiteBuuilder/Rideyeyy](https://github.com/WebsiteBuuilder/Rideyeyy), branch `main`
+6. Set Discord env vars and `REGISTER_COMMANDS=true` for first deploy
+7. Logs should show: `[db] mode=railway-pg-vars` and `Database connection verified`
 
-**Error `password authentication failed for user "postgres"`**
+**Error `password authentication failed (28P01)`**
 
-1. Bot `DATABASE_URL` must **Reference** Postgres → **`DATABASE_PRIVATE_URL`** (not the public URL).
-2. Delete any duplicate/manual `DATABASE_URL` on the bot service.
-3. In Railway Postgres service → **Settings** → **Reset Credentials** → redeploy bot.
-4. Check deploy logs for `[db] target host=... network=private` — if `network=public`, switch to `DATABASE_PRIVATE_URL` reference.
+1. PostgreSQL → **Connect** → select bot (not only a DATABASE_URL reference)
+2. Delete manual `DATABASE_URL` on bot
+3. Postgres → **Settings** → **Reset Credentials** → **Connect** again → redeploy bot
 
 Migrations run automatically on bot startup.
 

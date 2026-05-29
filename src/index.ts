@@ -153,7 +153,7 @@ async function main(): Promise<void> {
     const pgErr = err as { code?: string };
     if (pgErr.code === '28P01') {
       logger.error(
-        'PostgreSQL rejected the password in DATABASE_URL. On Railway: delete DATABASE_URL on the bot, then add Reference → PostgreSQL → DATABASE_PRIVATE_URL and name it DATABASE_URL. Or reset Postgres credentials in Railway and redeploy both services.',
+        'PostgreSQL password rejected (28P01). FIX: In Railway open PostgreSQL → click Connect → select your bot service. This injects PGHOST/PGPASSWORD directly. Then delete any manual DATABASE_URL on the bot and redeploy. If still failing: Postgres Settings → Reset Credentials → Connect again → redeploy bot.',
         { commandName: 'main' }
       );
     }
