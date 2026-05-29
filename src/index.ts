@@ -54,11 +54,21 @@ async function registerCommands(): Promise<void> {
     ticketsCmd.ticketData.toJSON(),
   ];
 
+  logger.info(`Registering ${commands.length} slash commands for guild ${config.discord.guildId}`, { commandName: 'register' });
+
   const rest = new REST({ version: '10' }).setToken(config.discord.token);
-  await rest.put(Routes.applicationGuildCommands(config.discord.clientId, config.discord.guildId), {
-    body: commands,
-  });
-  logger.info('Slash commands registered', { commandName: 'register' });
+  try {
+    await rest.put(
+      Routes.applicationGuildCommands(config.discord.clientId, config.discord.guildId),
+      { body: commands }
+    );
+    logger.info('Slash commands registered successfully', { commandName: 'register' });
+  } catch (err) {
+    // Log full error detail so the real cause (bad CLIENT_ID, missing scope,
+    // wrong guildId, etc.) is visible in container logs.
+    logger.error('Failed to register slash commands — bot will still start but commands will not appear', { commandName: 'register' });
+    console.error('[register] REST error:', err);
+  }
 }
 
 function buildServices(): AppServices {
@@ -159,9 +169,9 @@ async function main(): Promise<void> {
   await runMigrations();
   const services = buildServices();
 
-  if (config.discord.registerCommands) {
-    await registerCommands();
-  }
+  // Always register — a failed REST call is caught inside registerCommands()
+  // and will not abort startup.
+  await registerCommands();
 
   const client = new Client({
     intents: [
@@ -234,7 +244,9 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  logger.error('Fatal startup error', { commandName: 'main' });
-  console.error(err);
+  // Print the raw error before the logger so it's visible even if the logger
+  // itself is the thing that threw.
+  console.error('[fatal] Startup error:', err);
+  logger.error(`Fatal startup error: ${err instanceof Error ? err.stack ?? err.message : String(err)}`, { commandName: 'main' });
   process.exit(1);
 });
