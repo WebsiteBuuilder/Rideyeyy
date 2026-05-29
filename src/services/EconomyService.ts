@@ -213,6 +213,126 @@ export class EconomyService {
     );
   }
 
+  /** Atomically deduct bet and credit payout in one ledger transaction. */
+  async executeGambleRound(
+    userId: Snowflake,
+    betAmount: Decimal,
+    payoutAmount: Decimal,
+    batchId: string,
+    betReason: string,
+    winReason: string,
+    metadata?: Record<string, unknown>
+  ): Promise<{ net: Decimal; payout: Decimal }> {
+    assertPositive(betAmount);
+    if (payoutAmount.isNegative()) {
+      throw new Error('Payout cannot be negative');
+    }
+
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const current = await this.ensureUserRow(client, userId);
+      if (current.lt(betAmount)) {
+        throw new InsufficientFundsError(userId, betAmount, current);
+      }
+
+      let balance = current.minus(betAmount);
+      await this.updateBalance(client, userId, balance);
+      await this.recordTransaction(client, {
+        userId,
+        type: 'gamble_loss',
+        amount: betAmount,
+        balanceBefore: current,
+        balanceAfter: balance,
+        reason: betReason,
+        sourceSystem: 'gamble',
+        metadata,
+        transactionBatchId: batchId,
+      });
+
+      if (payoutAmount.gt(0)) {
+        const beforeWin = balance;
+        balance = balance.plus(payoutAmount);
+        await this.updateBalance(client, userId, balance);
+        await this.recordTransaction(client, {
+          userId,
+          type: 'gamble_win',
+          amount: payoutAmount,
+          balanceBefore: beforeWin,
+          balanceAfter: balance,
+          reason: winReason,
+          sourceSystem: 'gamble',
+          metadata,
+          transactionBatchId: batchId,
+        });
+      }
+
+      await client.query('COMMIT');
+      return { net: payoutAmount.minus(betAmount), payout: payoutAmount };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Atomically charge crate price and credit RC reward. */
+  async executeCratePurchase(
+    userId: Snowflake,
+    price: Decimal,
+    rcReward: Decimal,
+    crateType: string
+  ): Promise<void> {
+    assertPositive(price);
+    if (rcReward.isNegative()) {
+      throw new Error('RC reward cannot be negative');
+    }
+
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const current = await this.ensureUserRow(client, userId);
+      if (current.lt(price)) {
+        throw new InsufficientFundsError(userId, price, current);
+      }
+
+      let balance = current.minus(price);
+      await this.updateBalance(client, userId, balance);
+      await this.recordTransaction(client, {
+        userId,
+        type: 'crate_open',
+        amount: price,
+        balanceBefore: current,
+        balanceAfter: balance,
+        reason: `${crateType} Crate Purchase`,
+        sourceSystem: 'crate',
+      });
+
+      if (rcReward.gt(0)) {
+        const beforeWin = balance;
+        balance = balance.plus(rcReward);
+        await this.updateBalance(client, userId, balance);
+        await this.recordTransaction(client, {
+          userId,
+          type: 'earn',
+          amount: rcReward,
+          balanceBefore: beforeWin,
+          balanceAfter: balance,
+          reason: `${crateType} Crate RC Reward`,
+          sourceSystem: 'crate',
+        });
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async setBalance(
     userId: Snowflake,
     amount: Decimal,

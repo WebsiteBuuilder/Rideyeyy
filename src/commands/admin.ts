@@ -6,6 +6,7 @@ import {
   hasAdminRole,
   memberFromInteraction,
   waitForConfirmation,
+  waitForFollowUpConfirmation,
 } from '../utils/discord';
 
 export const data = new SlashCommandBuilder()
@@ -152,10 +153,17 @@ async function handleReplay(
 
   const confirmed = await waitForConfirmation(
     interaction,
-    'admin_replay',
-    '⚠️ **CRITICAL**: This TRUNCATES all balances and rebuilds from transaction history. This cannot be undone easily. Click CONFIRM.'
+    'admin_replay_1',
+    '⚠️ **Step 1/2**: Economy replay will **truncate all balances** and rebuild from transactions in the selected window. Continue?'
   );
   if (!confirmed) return;
+
+  const finalConfirm = await waitForFollowUpConfirmation(
+    interaction,
+    'admin_replay_2',
+    '⚠️ **Step 2/2 — FINAL**: This is destructive and hard to undo. Click **CONFIRM** only if you have a recent snapshot.'
+  );
+  if (!finalConfirm) return;
 
   await services.backup.replayEconomy(start, end, interaction.user.id);
   await interaction.followUp({ content: 'Economy replay completed.', ephemeral: true });

@@ -91,9 +91,11 @@ export class CrateService {
     const picked = this.pickReward(rewards);
     const awarded: CrateOpenReward[] = [];
 
-    await this.economy.removeBalance(userId, price, `${crateType} Crate Purchase`, 'crate', undefined, undefined, 'crate_open');
+    const rcReward =
+      picked.reward_type === 'rc_payout' ? new Decimal(picked.reward_value ?? 0) : new Decimal(0);
+    await this.economy.executeCratePurchase(userId, price, rcReward, crateType);
 
-    const description = await this.applyReward(userId, picked, crateType, client, guildId);
+    const description = await this.applyReward(userId, picked, crateType, client, guildId, rcReward.gt(0));
     awarded.push({
       reward_type: picked.reward_type,
       reward_value: picked.reward_value,
@@ -116,12 +118,13 @@ export class CrateService {
     reward: { reward_type: string; reward_value: string | null; reward_metadata: unknown },
     crateType: CrateType,
     client: Client,
-    guildId: Snowflake
+    guildId: Snowflake,
+    rcAlreadyPaid = false
   ): Promise<string> {
     switch (reward.reward_type) {
       case 'rc_payout': {
         const amount = new Decimal(reward.reward_value ?? 0);
-        if (amount.gt(0)) {
+        if (amount.gt(0) && !rcAlreadyPaid) {
           await this.economy.addBalance(userId, amount, `${crateType} Crate RC Reward`, 'crate');
         }
         return `You won **${amount} RC**!`;

@@ -65,12 +65,23 @@ Migrations run automatically on bot startup.
 | `/pay` | Transfer RC |
 | `/transactions` | Transaction history |
 | `/leaderboard` | Top balances |
-| `/coinflip` `/dice` `/blackjack` | Gambling |
+| `/inventory` | Crate items and rewards |
+| `/coinflip` `/dice` `/blackjack` | Gambling (blackjack supports double down; stale games auto-stand after timeout) |
 | `/crate` | Open loot crates |
 | `/redeem` | Convert RC to ride credits (nickname tag) |
 | `/book` | Open booking ticket |
 | `/ticket` | Staff ticket management |
-| `/admin` | Snapshots, rollback, replay, balance set |
+| `/admin` | Snapshots, rollback, replay (double confirm), balance set |
+
+### Optional tuning
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BLACKJACK_TIMEOUT_SECONDS` | `300` | Auto-stand inactive blackjack games |
+| `GAMBLE_MIN_BET` / `GAMBLE_MAX_BET` | `10` / `10000` | Bet limits |
+| `CRATE_*_PRICE` | see `.env.example` | Bronze/silver/gold crate costs |
+
+Configure gold crate cosmetic roles in Postgres (`crate_rewards.reward_metadata.roleId`).
 
 ## Architecture
 

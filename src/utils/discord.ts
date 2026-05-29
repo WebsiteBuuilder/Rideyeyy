@@ -62,6 +62,46 @@ export async function waitForConfirmation(
     ephemeral: true,
   });
 
+  return waitForButtonConfirmation(interaction, customIdPrefix);
+}
+
+export async function waitForFollowUpConfirmation(
+  interaction: ChatInputCommandInteraction,
+  customIdPrefix: string,
+  warningMessage: string
+): Promise<boolean> {
+  const row = buildConfirmRow(customIdPrefix);
+  const followUpMessage = await interaction.followUp({
+    content: warningMessage,
+    components: [row],
+    ephemeral: true,
+  });
+
+  try {
+    const confirmation = await followUpMessage.awaitMessageComponent({
+      filter: (i: MessageComponentInteraction) =>
+        i.user.id === interaction.user.id &&
+        (i.customId === `${customIdPrefix}:confirm` || i.customId === `${customIdPrefix}:cancel`),
+      componentType: ComponentType.Button,
+      time: CONFIRM_TIMEOUT_MS,
+    });
+
+    const confirmed = confirmation.customId === `${customIdPrefix}:confirm`;
+    await confirmation.update({
+      content: confirmed ? 'Confirmed. Processing...' : 'Cancelled.',
+      components: [],
+    });
+    return confirmed;
+  } catch {
+    await followUpMessage.edit({ content: 'Confirmation timed out.', components: [] }).catch(() => {});
+    return false;
+  }
+}
+
+async function waitForButtonConfirmation(
+  interaction: ChatInputCommandInteraction,
+  customIdPrefix: string
+): Promise<boolean> {
   const message = await interaction.fetchReply();
   try {
     const confirmation = await message.awaitMessageComponent({

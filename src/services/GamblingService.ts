@@ -53,16 +53,19 @@ export class GamblingService {
     const winRoll = randomInt(0, 100);
     const won = winRoll < config.gambling.coinflipWinChance;
     const outcome = won ? choice : choice === 'heads' ? 'tails' : 'heads';
+    const payout = won ? amount.mul(2) : new Decimal(0);
 
-    await this.economy.removeBalance(userId, amount, 'Coinflip Bet', 'gamble', batchId, { game: 'coinflip' }, 'gamble_loss');
+    const { net, payout: paid } = await this.economy.executeGambleRound(
+      userId,
+      amount,
+      payout,
+      batchId,
+      'Coinflip Bet',
+      'Coinflip Win',
+      { game: 'coinflip', choice, outcome, won }
+    );
 
-    let payout = new Decimal(0);
-    if (won) {
-      payout = amount.mul(2);
-      await this.economy.addBalance(userId, payout, 'Coinflip Win', 'gamble', batchId, { game: 'coinflip' }, 'gamble_win');
-    }
-
-    return { won, choice, outcome, payout, net: payout.minus(amount) };
+    return { won, choice, outcome, payout: paid, net };
   }
 
   async dice(userId: Snowflake, amount: Decimal, target: number): Promise<DiceResult> {
@@ -73,8 +76,6 @@ export class GamblingService {
 
     const batchId = randomUUID();
     const roll = randomInt(1, 7);
-
-    await this.economy.removeBalance(userId, amount, 'Dice Bet', 'gamble', batchId, { game: 'dice', target, roll }, 'gamble_loss');
 
     let payout = new Decimal(0);
     let description = 'Miss! You lose.';
@@ -92,11 +93,17 @@ export class GamblingService {
       description = `Close! ${config.gambling.diceAdjacentMultiplier}x payout.`;
     }
 
-    if (payout.gt(0)) {
-      await this.economy.addBalance(userId, payout, 'Dice Win', 'gamble', batchId, { game: 'dice', roll }, 'gamble_win');
-    }
+    const { net, payout: paid } = await this.economy.executeGambleRound(
+      userId,
+      amount,
+      payout,
+      batchId,
+      'Dice Bet',
+      'Dice Win',
+      { game: 'dice', target, roll }
+    );
 
-    return { roll, target, payout, net: payout.minus(amount), description };
+    return { roll, target, payout: paid, net, description };
   }
 
   createDeck(): Card[] {
