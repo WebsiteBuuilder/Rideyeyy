@@ -1,10 +1,17 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+import {
+  ChatInputCommandInteraction,
+  EmbedBuilder,
+  SlashCommandBuilder,
+} from 'discord.js';
 import type { AppServices } from '../types';
 import {
   ephemeralReply,
   hasAdminRole,
   hasStaffRole,
   memberFromInteraction,
+  baseEmbed,
+  ephemeralEmbed,
+  COLOR,
 } from '../utils/discord';
 
 export const bookData = new SlashCommandBuilder()
@@ -34,6 +41,10 @@ export const ticketData = new SlashCommandBuilder()
   )
   .addSubcommand((s) => s.setName('reopen').setDescription('Reopen a closed ticket'));
 
+// ---------------------------------------------------------------------------
+// /book — create a booking ticket
+// ---------------------------------------------------------------------------
+
 export async function handleBook(
   interaction: ChatInputCommandInteraction,
   services: AppServices
@@ -52,14 +63,31 @@ export async function handleBook(
       interaction.guild,
       member
     );
-    await ephemeralReply(
-      interaction,
-      `Booking ticket created! <#${channelId}> (ID: \`${ticketId}\`)`
-    );
+
+    const embed = baseEmbed(COLOR.WIN, '—', interaction.guild)
+      .setTitle('🎫  Booking Ticket Created')
+      .setDescription(
+        `Your private booking channel is ready. A staff member will be with you shortly.\n\n` +
+        `> <#${channelId}>`
+      )
+      .addFields({ name: 'Ticket ID', value: `\`${ticketId}\``, inline: true })
+      .setThumbnail(interaction.user.displayAvatarURL());
+
+    await ephemeralEmbed(interaction, embed);
   } catch (err) {
-    await ephemeralReply(interaction, err instanceof Error ? err.message : 'Failed to create ticket.');
+    const errEmbed = new EmbedBuilder()
+      .setColor(COLOR.ERROR)
+      .setTitle('Failed to Create Ticket')
+      .setDescription(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      .setFooter({ text: 'Guhd Rides' })
+      .setTimestamp();
+    await ephemeralEmbed(interaction, errEmbed);
   }
 }
+
+// ---------------------------------------------------------------------------
+// /ticket — manage an existing ticket (staff only)
+// ---------------------------------------------------------------------------
 
 export async function handleTicket(
   interaction: ChatInputCommandInteraction,
@@ -72,31 +100,45 @@ export async function handleTicket(
   }
 
   const channelId = interaction.channelId;
-  const sub = interaction.options.getSubcommand();
+  const sub       = interaction.options.getSubcommand();
 
   switch (sub) {
     case 'close': {
-      const reason = interaction.options.getString('reason') ?? undefined;
+      const reason = interaction.options.getString('reason') ?? 'No reason provided';
       await services.ticket.closeTicket(interaction.client, channelId, reason);
-      await ephemeralReply(interaction, 'Ticket closed.');
+      const embed = baseEmbed(COLOR.ERROR, '—', interaction.guild)
+        .setTitle('🔒  Ticket Closed')
+        .addFields({ name: 'Reason', value: reason, inline: false });
+      await ephemeralEmbed(interaction, embed);
       break;
     }
     case 'assign': {
       const staff = interaction.options.getUser('staff', true);
       await services.ticket.assignTicket(channelId, staff.id);
-      await ephemeralReply(interaction, `Assigned to ${staff.username}.`);
+      const embed = baseEmbed(COLOR.PRIMARY, '—', interaction.guild)
+        .setTitle('👤  Ticket Assigned')
+        .addFields({ name: 'Staff', value: `<@${staff.id}>`, inline: true });
+      await ephemeralEmbed(interaction, embed);
       break;
     }
     case 'add_note': {
       const text = interaction.options.getString('text', true);
       await services.ticket.addNote(channelId, text);
-      await ephemeralReply(interaction, 'Note added.');
+      const embed = baseEmbed(COLOR.PRIMARY, '—', interaction.guild)
+        .setTitle('📝  Note Added')
+        .setDescription(text);
+      await ephemeralEmbed(interaction, embed);
       break;
     }
     case 'reopen': {
       await services.ticket.reopenTicket(interaction.client, channelId);
-      await ephemeralReply(interaction, 'Ticket reopened.');
+      const embed = baseEmbed(COLOR.WIN, '—', interaction.guild)
+        .setTitle('🔓  Ticket Reopened')
+        .setDescription('This ticket has been reopened. Staff have been notified.');
+      await ephemeralEmbed(interaction, embed);
       break;
     }
+    default:
+      await ephemeralReply(interaction, 'Unknown subcommand.');
   }
 }
