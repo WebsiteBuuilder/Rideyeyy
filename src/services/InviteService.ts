@@ -1,7 +1,6 @@
 import { Guild, Invite } from 'discord.js';
 import { Pool } from 'pg';
 import Decimal from 'decimal.js';
-import { randomUUID } from 'crypto';
 import { config } from '../config';
 import { EconomyService } from './EconomyService';
 import { LoggerService } from './LoggerService';
@@ -56,6 +55,24 @@ export class InviteService {
     return null;
   }
 
+  private async insertRejectedInvite(
+    invitedUserId: Snowflake,
+    inviterUserId: Snowflake,
+    inviteCode: string,
+    reason: string
+  ): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO invite_tracking (invited_user_id, inviter_user_id, invite_code_used, status, validated_at, validation_reason)
+       VALUES ($1, $2, $3, 'rejected', NOW(), $4)
+       ON CONFLICT (invited_user_id) DO UPDATE SET
+         status = 'rejected',
+         validated_at = NOW(),
+         validation_reason = EXCLUDED.validation_reason`,
+      [invitedUserId, inviterUserId, inviteCode, reason]
+    );
+    this.logger.warn('Invite rejected at tracking', { userId: invitedUserId, commandName: 'invite' });
+  }
+
   async trackPendingInvite(
     invitedUserId: Snowflake,
     inviterUserId: Snowflake,
@@ -65,23 +82,57 @@ export class InviteService {
     await this.user.ensureUser(inviterUserId);
 
     if (invitedUserId === inviterUserId) {
-      throw new Error('Self-invite not allowed');
+      await this.insertRejectedInvite(invitedUserId, inviterUserId, inviteCode, 'Self-invite not allowed');
+      return;
+    }
+
+    const existingInvitee = await this.pool.query(
+      'SELECT status FROM invite_tracking WHERE invited_user_id = $1',
+      [invitedUserId]
+    );
+    if ((existingInvitee.rowCount ?? 0) > 0) {
+      await this.insertRejectedInvite(
+        invitedUserId,
+        inviterUserId,
+        inviteCode,
+        'Duplicate invited user'
+      );
+      return;
+    }
+
+    const velocity = await this.pool.query<{ cnt: number }>(
+      `SELECT COUNT(*)::int AS cnt FROM invite_tracking
+       WHERE inviter_user_id = $1 AND joined_at > NOW() - INTERVAL '24 hours'`,
+      [inviterUserId]
+    );
+    if ((velocity.rows[0]?.cnt ?? 0) > 20) {
+      await this.insertRejectedInvite(
+        invitedUserId,
+        inviterUserId,
+        inviteCode,
+        'Inviter velocity too high (possible abuse)'
+      );
+      return;
     }
 
     const recentDup = await this.pool.query(
       `SELECT 1 FROM invite_tracking
-       WHERE invited_user_id = $1 OR (inviter_user_id = $2 AND joined_at > NOW() - INTERVAL '1 hour')`,
-      [invitedUserId, inviterUserId]
+       WHERE inviter_user_id = $1 AND joined_at > NOW() - INTERVAL '1 hour' AND status = 'pending'`,
+      [inviterUserId]
     );
-
-    if ((recentDup.rowCount ?? 0) > 0) {
-      this.logger.warn('Duplicate invite pattern detected', { userId: invitedUserId });
+    if ((recentDup.rowCount ?? 0) >= 5) {
+      await this.insertRejectedInvite(
+        invitedUserId,
+        inviterUserId,
+        inviteCode,
+        'Suspicious invite burst from inviter'
+      );
+      return;
     }
 
     await this.pool.query(
       `INSERT INTO invite_tracking (invited_user_id, inviter_user_id, invite_code_used, status)
-       VALUES ($1, $2, $3, 'pending')
-       ON CONFLICT (invited_user_id) DO NOTHING`,
+       VALUES ($1, $2, $3, 'pending')`,
       [invitedUserId, inviterUserId, inviteCode]
     );
 
@@ -152,7 +203,7 @@ export class InviteService {
 
     const velocity = await this.pool.query(
       `SELECT COUNT(*)::int AS cnt FROM invite_tracking
-       WHERE inviter_user_id = $1 AND joined_at > NOW() - INTERVAL '24 hours'`,
+       WHERE inviter_user_id = $1 AND joined_at > NOW() - INTERVAL '24 hours' AND status NOT IN ('rejected', 'invalid')`,
       [row.inviter_user_id]
     );
     if ((velocity.rows[0]?.cnt ?? 0) > 20) {

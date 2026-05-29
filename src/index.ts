@@ -10,7 +10,7 @@ import {
   REST,
   Routes,
 } from 'discord.js';
-import { config } from './config';
+import { config, logStartupWarnings } from './config';
 import { pool, runMigrations, closePool } from './database';
 import { LoggerService } from './services/LoggerService';
 import { EconomyService } from './services/EconomyService';
@@ -26,6 +26,7 @@ import { registerGuildMemberAdd } from './events/guildMemberAdd';
 import { startDailySnapshotJob } from './jobs/dailySnapshotJob';
 import { startInviteValidatorJob } from './jobs/inviteValidatorJob';
 import { startBlackjackTimeoutJob } from './jobs/blackjackTimeoutJob';
+import { startCosmeticRoleExpiryJob } from './jobs/cosmeticRoleExpiryJob';
 import * as economyCmd from './commands/economy';
 import * as adminCmd from './commands/admin';
 import * as gamblingCmd from './commands/gambling';
@@ -153,6 +154,7 @@ async function handleInteraction(interaction: Interaction, services: AppServices
 
 async function main(): Promise<void> {
   logger.info('Starting Rideey bot...');
+  logStartupWarnings(logger);
 
   await runMigrations();
   const services = buildServices();
@@ -209,6 +211,7 @@ async function main(): Promise<void> {
     startDailySnapshotJob(services.backup, services.logger);
     startInviteValidatorJob(c, services.invite, services.logger);
     startBlackjackTimeoutJob(services.gambling, services.logger);
+    startCosmeticRoleExpiryJob(c, services.pool, services.user, services.logger);
   });
 
   client.on(Events.InteractionCreate, (interaction) => {

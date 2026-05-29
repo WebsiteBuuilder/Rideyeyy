@@ -28,6 +28,7 @@ export type TransactionType =
   | 'gamble_loss'
   | 'admin_add'
   | 'admin_remove'
+  | 'admin'
   | 'transfer_in'
   | 'transfer_out'
   | 'rollback'

@@ -56,6 +56,21 @@ export class UserService {
     await member.roles.add(roleId);
   }
 
+  async removeRole(
+    client: Client,
+    guildId: Snowflake,
+    userId: Snowflake,
+    roleId: Snowflake
+  ): Promise<void> {
+    if (roleId === '0') return;
+    const guild = await client.guilds.fetch(guildId);
+    const member = await this.getMember(guild, userId);
+    if (!member) return;
+    if (member.roles.cache.has(roleId)) {
+      await member.roles.remove(roleId);
+    }
+  }
+
   async incrementMessageCount(userId: Snowflake): Promise<void> {
     await this.ensureUser(userId);
     await this.pool.query(

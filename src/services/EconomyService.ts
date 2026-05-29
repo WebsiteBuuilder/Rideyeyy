@@ -1,9 +1,10 @@
 import { Pool, PoolClient } from 'pg';
 import { randomUUID } from 'crypto';
 import Decimal from 'decimal.js';
-import type { SourceSystem, TransactionType, Snowflake } from '../types';
+import type { RedeemOption, SourceSystem, TransactionType, Snowflake } from '../types';
 import { LoggerService } from './LoggerService';
 import { assertPositive, fromDbString, toDbString } from '../utils/math';
+import { withTransaction } from '../database';
 
 export class InsufficientFundsError extends Error {
   constructor(userId: Snowflake, required: Decimal, available: Decimal) {
@@ -277,60 +278,218 @@ export class EconomyService {
     }
   }
 
-  /** Atomically charge crate price and credit RC reward. */
-  async executeCratePurchase(
+  /** Atomically charge crate price and credit RC reward (within an existing transaction). */
+  async executeCratePurchaseOnClient(
+    client: PoolClient,
     userId: Snowflake,
     price: Decimal,
     rcReward: Decimal,
     crateType: string
-  ): Promise<void> {
+  ): Promise<{ purchaseTxId: string; rewardTxId?: string }> {
     assertPositive(price);
     if (rcReward.isNegative()) {
       throw new Error('RC reward cannot be negative');
+    }
+
+    const current = await this.ensureUserRow(client, userId);
+    if (current.lt(price)) {
+      throw new InsufficientFundsError(userId, price, current);
+    }
+
+    let balance = current.minus(price);
+    await this.updateBalance(client, userId, balance);
+    const purchaseTxId = await this.recordTransaction(client, {
+      userId,
+      type: 'crate_open',
+      amount: price,
+      balanceBefore: current,
+      balanceAfter: balance,
+      reason: `${crateType} Crate Purchase`,
+      sourceSystem: 'crate',
+    });
+
+    let rewardTxId: string | undefined;
+    if (rcReward.gt(0)) {
+      const beforeWin = balance;
+      balance = balance.plus(rcReward);
+      await this.updateBalance(client, userId, balance);
+      rewardTxId = await this.recordTransaction(client, {
+        userId,
+        type: 'earn',
+        amount: rcReward,
+        balanceBefore: beforeWin,
+        balanceAfter: balance,
+        reason: `${crateType} Crate RC Reward`,
+        sourceSystem: 'crate',
+      });
+    }
+
+    return { purchaseTxId, rewardTxId };
+  }
+
+  /** Atomically debit RC and insert a pending redeem row. */
+  async executeRedeemPurchase(
+    client: PoolClient,
+    userId: Snowflake,
+    cost: Decimal,
+    option: RedeemOption,
+    originalNickname: string,
+    usdValue: number
+  ): Promise<{ txId: string; redeemId: string }> {
+    assertPositive(cost);
+    const current = await this.ensureUserRow(client, userId);
+    if (current.lt(cost)) {
+      throw new InsufficientFundsError(userId, cost, current);
+    }
+
+    const newBalance = current.minus(cost);
+    await this.updateBalance(client, userId, newBalance);
+    const txId = await this.recordTransaction(client, {
+      userId,
+      type: 'redeem',
+      amount: cost,
+      balanceBefore: current,
+      balanceAfter: newBalance,
+      reason: `Redeem ${option}`,
+      sourceSystem: 'redeem',
+      metadata: { redeemOption: option },
+    });
+
+    const redeemInsert = await client.query<{ id: string }>(
+      `INSERT INTO redeem_transactions
+        (user_id, redeem_option, rc_spent, redeem_value_usd, original_nickname, redeem_status, transaction_id)
+       VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+       RETURNING id`,
+      [userId, option, toDbString(cost), usdValue, originalNickname.slice(0, 32), txId]
+    );
+
+    return { txId, redeemId: redeemInsert.rows[0].id };
+  }
+
+  /**
+   * Atomically debit bet and credit payout for blackjack.
+   * When payout is zero, only the bet leg is recorded.
+   */
+  async executeBlackjackRound(
+    userId: Snowflake,
+    betAmount: Decimal,
+    payoutAmount: Decimal,
+    batchId: string,
+    betReason: string,
+    payoutReason: string,
+    metadata?: Record<string, unknown>
+  ): Promise<{ betTxId: string | null; payoutTxId: string | null }> {
+    if (betAmount.isNegative() || payoutAmount.isNegative()) {
+      throw new Error('Bet and payout cannot be negative');
+    }
+    if (betAmount.isZero() && payoutAmount.isZero()) {
+      throw new Error('Blackjack round requires a bet or payout');
     }
 
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       const current = await this.ensureUserRow(client, userId);
-      if (current.lt(price)) {
-        throw new InsufficientFundsError(userId, price, current);
+      let balance = current;
+      let betTxId: string | null = null;
+      let payoutTxId: string | null = null;
+
+      if (betAmount.gt(0)) {
+        if (balance.lt(betAmount)) {
+          throw new InsufficientFundsError(userId, betAmount, balance);
+        }
+        const before = balance;
+        balance = balance.minus(betAmount);
+        await this.updateBalance(client, userId, balance);
+        betTxId = await this.recordTransaction(client, {
+          userId,
+          type: 'gamble_loss',
+          amount: betAmount,
+          balanceBefore: before,
+          balanceAfter: balance,
+          reason: betReason,
+          sourceSystem: 'gamble',
+          metadata,
+          transactionBatchId: batchId,
+        });
       }
 
-      let balance = current.minus(price);
-      await this.updateBalance(client, userId, balance);
-      await this.recordTransaction(client, {
-        userId,
-        type: 'crate_open',
-        amount: price,
-        balanceBefore: current,
-        balanceAfter: balance,
-        reason: `${crateType} Crate Purchase`,
-        sourceSystem: 'crate',
-      });
-
-      if (rcReward.gt(0)) {
-        const beforeWin = balance;
-        balance = balance.plus(rcReward);
+      if (payoutAmount.gt(0)) {
+        const before = balance;
+        balance = balance.plus(payoutAmount);
         await this.updateBalance(client, userId, balance);
-        await this.recordTransaction(client, {
+        payoutTxId = await this.recordTransaction(client, {
           userId,
-          type: 'earn',
-          amount: rcReward,
-          balanceBefore: beforeWin,
+          type: 'gamble_win',
+          amount: payoutAmount,
+          balanceBefore: before,
           balanceAfter: balance,
-          reason: `${crateType} Crate RC Reward`,
-          sourceSystem: 'crate',
+          reason: payoutReason,
+          sourceSystem: 'gamble',
+          metadata,
+          transactionBatchId: batchId,
         });
       }
 
       await client.query('COMMIT');
+      return { betTxId, payoutTxId };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
     } finally {
       client.release();
     }
+  }
+
+  /** Credit-only blackjack payout (bet already placed). */
+  async creditBlackjackPayout(
+    userId: Snowflake,
+    payoutAmount: Decimal,
+    reason: string,
+    batchId?: string,
+    metadata?: Record<string, unknown>
+  ): Promise<string | null> {
+    if (payoutAmount.isZero()) {
+      return null;
+    }
+    const { payoutTxId } = await this.executeBlackjackRound(
+      userId,
+      new Decimal(0),
+      payoutAmount,
+      batchId ?? randomUUID(),
+      'Blackjack (no additional bet)',
+      reason,
+      metadata
+    );
+    return payoutTxId;
+  }
+
+  /** Debit-only blackjack bet. */
+  async debitBlackjackBet(
+    userId: Snowflake,
+    betAmount: Decimal,
+    reason: string,
+    batchId?: string,
+    metadata?: Record<string, unknown>
+  ): Promise<string> {
+    assertPositive(betAmount);
+    const { betTxId } = await this.executeBlackjackRound(
+      userId,
+      betAmount,
+      new Decimal(0),
+      batchId ?? randomUUID(),
+      reason,
+      'Blackjack (no payout)',
+      metadata
+    );
+    if (!betTxId) {
+      throw new Error('Failed to record blackjack bet');
+    }
+    return betTxId;
+  }
+
+  runInTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+    return withTransaction(fn);
   }
 
   async setBalance(
@@ -480,6 +639,36 @@ export class EconomyService {
       [limit]
     );
     return result.rows;
+  }
+
+  async recordAuditTransaction(
+    userId: Snowflake,
+    type: 'rollback' | 'admin',
+    reason: string,
+    metadata?: Record<string, unknown>
+  ): Promise<string> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const current = await this.ensureUserRow(client, userId);
+      const txId = await this.recordTransaction(client, {
+        userId,
+        type,
+        amount: new Decimal(0),
+        balanceBefore: current,
+        balanceAfter: current,
+        reason,
+        sourceSystem: type === 'rollback' ? 'rollback' : 'admin',
+        metadata,
+      });
+      await client.query('COMMIT');
+      return txId;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   async recordSystemTransaction(

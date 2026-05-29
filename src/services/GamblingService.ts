@@ -2,7 +2,7 @@ import { randomInt, randomUUID } from 'crypto';
 import { Pool } from 'pg';
 import Decimal from 'decimal.js';
 import { config } from '../config';
-import { EconomyService, InsufficientFundsError } from './EconomyService';
+import { EconomyService } from './EconomyService';
 import { LoggerService } from './LoggerService';
 import type { Card, Rank, Suit, Snowflake, BlackjackStatus } from '../types';
 import { assertPositive } from '../utils/math';
@@ -195,23 +195,22 @@ export class GamblingService {
     const dealerHand = [this.drawCard(deck), this.drawCard(deck)];
 
     const batchId = randomUUID();
-    const betTx = await this.economy.removeBalance(
-      userId,
-      betAmount,
-      'Blackjack Bet',
-      'gamble',
-      batchId,
-      undefined,
-      'gamble_loss'
-    );
 
     if (this.isBlackjack(playerHand)) {
       const payout = betAmount.mul(2.5);
-      await this.economy.addBalance(userId, payout, 'Blackjack Natural', 'gamble', batchId, undefined, 'gamble_win');
+      const { betTxId, payoutTxId } = await this.economy.executeBlackjackRound(
+        userId,
+        betAmount,
+        payout,
+        batchId,
+        'Blackjack Bet',
+        'Blackjack Natural',
+        { natural: true }
+      );
       const insert = await this.pool.query<{ game_id: string }>(
         `INSERT INTO blackjack_games
-          (user_id, bet_amount, player_hand_json, dealer_hand_json, deck_json, status, result, player_payout, completed_at, bet_transaction_id)
-         VALUES ($1, $2, $3, $4, $5, 'completed', 'blackjack', $6, NOW(), $7)
+          (user_id, bet_amount, player_hand_json, dealer_hand_json, deck_json, status, result, player_payout, completed_at, bet_transaction_id, payout_transaction_id)
+         VALUES ($1, $2, $3, $4, $5, 'completed', 'blackjack', $6, NOW(), $7, $8)
          RETURNING game_id`,
         [
           userId,
@@ -220,7 +219,8 @@ export class GamblingService {
           JSON.stringify(dealerHand),
           JSON.stringify(deck),
           payout.toFixed(2),
-          betTx,
+          betTxId,
+          payoutTxId,
         ]
       );
       return {
@@ -232,12 +232,19 @@ export class GamblingService {
       };
     }
 
+    const betTxId = await this.economy.debitBlackjackBet(
+      userId,
+      betAmount,
+      'Blackjack Bet',
+      batchId
+    );
+
     const insert = await this.pool.query<{ game_id: string }>(
       `INSERT INTO blackjack_games
         (user_id, bet_amount, player_hand_json, dealer_hand_json, deck_json, status, bet_transaction_id)
        VALUES ($1, $2, $3, $4, $5, 'player_turn', $6)
        RETURNING game_id`,
-      [userId, betAmount.toFixed(2), JSON.stringify(playerHand), JSON.stringify(dealerHand), JSON.stringify(deck), betTx]
+      [userId, betAmount.toFixed(2), JSON.stringify(playerHand), JSON.stringify(dealerHand), JSON.stringify(deck), betTxId]
     );
 
     return {
@@ -313,7 +320,7 @@ export class GamblingService {
 
     const extraBet = game.bet_amount;
     this.validateBet(extraBet);
-    await this.economy.removeBalance(userId, extraBet, 'Blackjack Double Down', 'gamble', undefined, undefined, 'gamble_loss');
+    await this.economy.debitBlackjackBet(userId, extraBet, 'Blackjack Double Down');
 
     const deck = [...game.deck_json];
     const playerHand = [...game.player_hand_json, this.drawCard(deck)];
@@ -393,13 +400,15 @@ export class GamblingService {
       result = 'loss';
     }
 
-    if (payout.gt(0)) {
-      await this.economy.addBalance(userId, payout, `Blackjack ${result}`, 'gamble', undefined, undefined, 'gamble_win');
-    }
+    const payoutTxId = await this.economy.creditBlackjackPayout(
+      userId,
+      payout,
+      `Blackjack ${result}`
+    );
 
     await this.pool.query(
-      `UPDATE blackjack_games SET dealer_hand_json = $1, deck_json = $2, status = 'completed', result = $3, player_payout = $4, completed_at = NOW() WHERE game_id = $5`,
-      [JSON.stringify(dealer), JSON.stringify(deck), result, payout.toFixed(2), gameId]
+      `UPDATE blackjack_games SET dealer_hand_json = $1, deck_json = $2, status = 'completed', result = $3, player_payout = $4, completed_at = NOW(), payout_transaction_id = $5 WHERE game_id = $6`,
+      [JSON.stringify(dealer), JSON.stringify(deck), result, payout.toFixed(2), payoutTxId, gameId]
     );
 
     return { playerHand, dealerHand: dealer, result, payout };
@@ -412,11 +421,15 @@ export class GamblingService {
     }
 
     const refund = game.bet_amount.div(2);
-    await this.economy.addBalance(userId, refund, 'Blackjack Surrender (half back)', 'gamble', undefined, undefined, 'gamble_win');
+    const payoutTxId = await this.economy.creditBlackjackPayout(
+      userId,
+      refund,
+      'Blackjack Surrender (half back)'
+    );
 
     await this.pool.query(
-      `UPDATE blackjack_games SET status = 'completed', result = 'surrender', player_payout = $1, completed_at = NOW() WHERE game_id = $2`,
-      [refund.toFixed(2), gameId]
+      `UPDATE blackjack_games SET status = 'completed', result = 'surrender', player_payout = $1, completed_at = NOW(), payout_transaction_id = $2 WHERE game_id = $3`,
+      [refund.toFixed(2), payoutTxId, gameId]
     );
   }
 

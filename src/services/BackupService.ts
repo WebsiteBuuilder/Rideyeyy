@@ -82,10 +82,11 @@ export class BackupService {
       client.release();
     }
 
-    await this.economy.recordSystemTransaction(
+    await this.economy.recordAuditTransaction(
       adminId,
+      'rollback',
       `Economy Rollback to Snapshot ${snapshotId}`,
-      { adminId, snapshotId, type: 'rollback' }
+      { adminId, snapshotId }
     );
 
     this.logger.warn('Economy rollback executed', { userId: adminId, transactionId: snapshotId });
@@ -109,6 +110,13 @@ export class BackupService {
       targetBalance,
       `User Rollback to ${timestamp.toISOString()}`,
       adminId
+    );
+
+    await this.economy.recordAuditTransaction(
+      userId,
+      'rollback',
+      `User Rollback to ${timestamp.toISOString()}`,
+      { adminId, snapshotId: snap.rows[0].id }
     );
 
     this.logger.warn('User rollback executed', { userId, transactionId: snap.rows[0].id });
@@ -148,7 +156,7 @@ export class BackupService {
         current = current.plus(amount);
       } else if (TRANSACTION_TYPES_DEBIT.has(tx.type)) {
         current = current.minus(amount);
-      } else if (tx.type === 'system') {
+      } else if (tx.type === 'system' || tx.type === 'admin' || tx.type === 'rollback') {
         continue;
       } else {
         current = fromDbString(tx.balance_after);
@@ -175,10 +183,11 @@ export class BackupService {
       client.release();
     }
 
-    await this.economy.recordSystemTransaction(
+    await this.economy.recordAuditTransaction(
       adminId,
+      'rollback',
       `Economy Replay from ${startTimestamp.toISOString()}${endTimestamp ? ` to ${endTimestamp.toISOString()}` : ''}`,
-      { adminId, startTimestamp, endTimestamp, type: 'rollback' }
+      { adminId, startTimestamp, endTimestamp }
     );
 
     this.logger.warn('Economy replay executed', { userId: adminId });

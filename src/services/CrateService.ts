@@ -1,6 +1,6 @@
 import { randomInt } from 'crypto';
 import type { Client } from 'discord.js';
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import Decimal from 'decimal.js';
 import { config } from '../config';
 import { EconomyService } from './EconomyService';
@@ -14,6 +14,13 @@ export interface CrateOpenReward {
   reward_value: string | null;
   reward_metadata: Record<string, unknown> | null;
   description: string;
+}
+
+interface PickedReward {
+  reward_type: string;
+  reward_value: string | null;
+  reward_metadata: unknown;
+  weight: number;
 }
 
 export class CrateService {
@@ -62,9 +69,7 @@ export class CrateService {
     return lines.join('\n');
   }
 
-  private pickReward(
-    rewards: Array<{ reward_type: string; reward_value: string | null; reward_metadata: unknown; weight: number }>
-  ) {
+  private pickReward(rewards: PickedReward[]): PickedReward {
     const totalWeight = rewards.reduce((s, r) => s + r.weight, 0);
     let roll = randomInt(0, totalWeight);
     for (const reward of rewards) {
@@ -89,49 +94,90 @@ export class CrateService {
     }
 
     const picked = this.pickReward(rewards);
-    const awarded: CrateOpenReward[] = [];
-
     const rcReward =
       picked.reward_type === 'rc_payout' ? new Decimal(picked.reward_value ?? 0) : new Decimal(0);
-    await this.economy.executeCratePurchase(userId, price, rcReward, crateType);
 
-    const description = await this.applyReward(userId, picked, crateType, client, guildId, rcReward.gt(0));
-    awarded.push({
-      reward_type: picked.reward_type,
-      reward_value: picked.reward_value,
-      reward_metadata: picked.reward_metadata as Record<string, unknown> | null,
-      description,
+    const description = this.describeReward(picked, rcReward, crateType);
+    const awarded: CrateOpenReward[] = [
+      {
+        reward_type: picked.reward_type,
+        reward_value: picked.reward_value,
+        reward_metadata: picked.reward_metadata as Record<string, unknown> | null,
+        description,
+      },
+    ];
+
+    const cosmeticRoleId = await this.economy.runInTransaction(async (dbClient) => {
+      const { purchaseTxId } = await this.economy.executeCratePurchaseOnClient(
+        dbClient,
+        userId,
+        price,
+        rcReward,
+        crateType
+      );
+
+      await this.insertRewardInventory(dbClient, userId, picked, rcReward.gt(0));
+
+      await dbClient.query(
+        `INSERT INTO crate_opens (user_id, crate_type, rc_spent, rewards_received_json, transaction_id)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [userId, crateType, price.toFixed(2), JSON.stringify(awarded), purchaseTxId]
+      );
+
+      if (picked.reward_type === 'cosmetic_role') {
+        const meta = (picked.reward_metadata ?? {}) as { roleId?: string };
+        return meta.roleId && meta.roleId !== '0' ? meta.roleId : null;
+      }
+      return null;
     });
 
-    const txResult = await this.pool.query(
-      `INSERT INTO crate_opens (user_id, crate_type, rc_spent, rewards_received_json)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [userId, crateType, price.toFixed(2), JSON.stringify(awarded)]
-    );
+    if (cosmeticRoleId) {
+      await this.user.addRole(client, guildId, userId, cosmeticRoleId);
+    }
 
-    this.logger.info('Crate opened', { userId, transactionId: txResult.rows[0].id });
+    this.logger.info('Crate opened', { userId });
     return awarded;
   }
 
-  private async applyReward(
-    userId: Snowflake,
-    reward: { reward_type: string; reward_value: string | null; reward_metadata: unknown },
-    crateType: CrateType,
-    client: Client,
-    guildId: Snowflake,
-    rcAlreadyPaid = false
-  ): Promise<string> {
+  private describeReward(
+    reward: PickedReward,
+    rcAmount: Decimal,
+    crateType: CrateType
+  ): string {
     switch (reward.reward_type) {
-      case 'rc_payout': {
-        const amount = new Decimal(reward.reward_value ?? 0);
-        if (amount.gt(0) && !rcAlreadyPaid) {
-          await this.economy.addBalance(userId, amount, `${crateType} Crate RC Reward`, 'crate');
-        }
-        return `You won **${amount} RC**!`;
-      }
+      case 'rc_payout':
+        return `You won **${rcAmount} RC**!`;
       case 'discount_token':
       case 'jackpot_raffle_ticket':
-        await this.pool.query(
+        return `You received a **${reward.reward_type.replace(/_/g, ' ')}**!`;
+      case 'cosmetic_role': {
+        const meta = (reward.reward_metadata ?? {}) as { roleId?: string };
+        return meta.roleId && meta.roleId !== '0'
+          ? 'You unlocked a **cosmetic role**!'
+          : 'You won a cosmetic reward (configure role ID in crate rewards).';
+      }
+      case 'nothing':
+        return 'Better luck next time — nothing this time.';
+      default:
+        return `You received: ${reward.reward_type}`;
+    }
+  }
+
+  private async insertRewardInventory(
+    client: PoolClient,
+    userId: Snowflake,
+    reward: PickedReward,
+    rcAlreadyPaid: boolean
+  ): Promise<void> {
+    switch (reward.reward_type) {
+      case 'rc_payout':
+        if (new Decimal(reward.reward_value ?? 0).gt(0) && !rcAlreadyPaid) {
+          throw new Error('RC payout must be settled in executeCratePurchaseOnClient');
+        }
+        return;
+      case 'discount_token':
+      case 'jackpot_raffle_ticket': {
+        await client.query(
           `INSERT INTO user_inventory (user_id, item_type, item_metadata, quantity)
            VALUES ($1, $2, $3, $4)`,
           [
@@ -141,26 +187,29 @@ export class CrateService {
             reward.reward_value ? parseInt(reward.reward_value, 10) : 1,
           ]
         );
-        return `You received a **${reward.reward_type.replace(/_/g, ' ')}**!`;
+        return;
+      }
       case 'cosmetic_role': {
         const meta = (reward.reward_metadata ?? {}) as { roleId?: string; temporary?: boolean };
-        const roleId = meta.roleId;
-        if (roleId && roleId !== '0') {
-          await this.user.addRole(client, guildId, userId, roleId);
-        }
-        await this.pool.query(
+        const inv = await client.query<{ id: string }>(
           `INSERT INTO user_inventory (user_id, item_type, item_metadata, quantity)
-           VALUES ($1, $2, $3, 1)`,
+           VALUES ($1, $2, $3, 1) RETURNING id`,
           [userId, 'cosmetic_role', JSON.stringify(meta)]
         );
-        return roleId && roleId !== '0'
-          ? `You unlocked a **cosmetic role**!`
-          : `You won a cosmetic reward (configure role ID in crate rewards).`;
+        const roleId = meta.roleId;
+        if (roleId && roleId !== '0') {
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + config.cosmeticRoles.durationDays);
+          await client.query(
+            `INSERT INTO role_grants (user_id, role_id, expires_at, source, inventory_id)
+             VALUES ($1, $2, $3, 'crate', $4)`,
+            [userId, roleId, expiresAt.toISOString(), inv.rows[0].id]
+          );
+        }
+        return;
       }
-      case 'nothing':
-        return 'Better luck next time — nothing this time.';
       default:
-        return `You received: ${reward.reward_type}`;
+        return;
     }
   }
 }

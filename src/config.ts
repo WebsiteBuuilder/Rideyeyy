@@ -86,6 +86,10 @@ export const config = {
     tenDollar: envInt('REDEEM_TEN_DOLLAR', 12000),
     freeRide: envInt('REDEEM_FREE_RIDE', 20000),
   },
+  cosmeticRoles: {
+    durationDays: envInt('COSMETIC_ROLE_DURATION_DAYS', 7),
+    cronSchedule: envString('COSMETIC_ROLE_CRON_SCHEDULE', '0 */6 * * *'),
+  },
   cron: {
     snapshot: envString('SNAPSHOT_CRON_SCHEDULE', '0 0 * * *'),
     inviteValidator: envString('INVITE_VALIDATOR_CRON_SCHEDULE', '0 * * * *'),
@@ -101,3 +105,11 @@ export const config = {
 } as const;
 
 export type Config = typeof config;
+
+export function logStartupWarnings(logger: { warn: (msg: string, meta?: Record<string, unknown>) => void }): void {
+  if (config.channels.ticketCategory === '0') {
+    logger.warn('TICKET_CATEGORY_ID is not set — /book will fail until configured', {
+      commandName: 'startup',
+    });
+  }
+}

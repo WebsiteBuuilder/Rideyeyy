@@ -81,25 +81,32 @@ export class RedeemService {
       throw new Error('You already have a pending redemption. Contact staff to clear it first.');
     }
 
-    const txId = await this.economy.removeBalance(userId, cost, `Redeem ${option}`, 'redeem', undefined, { redeemOption: option }, 'redeem');
+    const { redeemId } = await this.economy.runInTransaction(async (client) =>
+      this.economy.executeRedeemPurchase(
+        client,
+        userId,
+        cost,
+        option,
+        displayName,
+        cfg.usdValue
+      )
+    );
 
     const { tagged, truncated } = this.user.buildTaggedNickname(displayName, cfg.tag);
-    const taggedNickname = await this.user.setNickname(client, guildId, userId, tagged);
+    let taggedNickname = tagged;
 
-    await this.pool.query(
-      `INSERT INTO redeem_transactions
-        (user_id, redeem_option, rc_spent, redeem_value_usd, original_nickname, tagged_nickname, transaction_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
+    try {
+      taggedNickname = await this.user.setNickname(client, guildId, userId, tagged);
+      await this.pool.query(
+        'UPDATE redeem_transactions SET tagged_nickname = $1 WHERE id = $2',
+        [taggedNickname, redeemId]
+      );
+    } catch (err) {
+      this.logger.error('Redeem nickname failed — pending row kept', {
         userId,
-        option,
-        cost.toFixed(2),
-        cfg.usdValue,
-        displayName.slice(0, 32),
-        taggedNickname,
-        txId,
-      ]
-    );
+        commandName: 'redeem',
+      });
+    }
 
     return { taggedNickname, truncated };
   }
@@ -134,7 +141,7 @@ export class RedeemService {
       [row.id]
     );
 
-    await this.economy.recordSystemTransaction(userId, 'Redemption Cleared', { adminId });
+    await this.economy.recordAuditTransaction(userId, 'admin', 'Redemption Cleared', { adminId });
     this.logger.info('Redemption cleared', { userId, commandName: 'admin redeem clear' });
   }
 }
