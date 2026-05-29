@@ -48,6 +48,10 @@ export const leaderboardData = new SlashCommandBuilder()
     o.setName('limit').setDescription('Number of users').setMinValue(1).setMaxValue(25).setRequired(false)
   );
 
+export const inventoryData = new SlashCommandBuilder()
+  .setName('inventory')
+  .setDescription('View your crate rewards and items');
+
 export async function handleBalance(
   interaction: ChatInputCommandInteraction,
   services: AppServices
@@ -133,4 +137,21 @@ export async function handleLeaderboard(
     })
   );
   await ephemeralReply(interaction, `🏆 **Route Cash Leaderboard**\n${lines.join('\n')}`);
+}
+
+export async function handleInventory(
+  interaction: ChatInputCommandInteraction,
+  services: AppServices
+): Promise<void> {
+  await services.user.ensureUser(interaction.user.id);
+  const items = await services.user.getInventory(interaction.user.id);
+  if (items.length === 0) {
+    await ephemeralReply(interaction, 'Your inventory is empty.');
+    return;
+  }
+  const lines = items.map((item) => {
+    const meta = item.item_metadata ? ` (${JSON.stringify(item.item_metadata)})` : '';
+    return `• **${item.item_type.replace(/_/g, ' ')}** x${item.quantity}${meta}`;
+  });
+  await ephemeralReply(interaction, `**Your Inventory**\n${lines.join('\n')}`.slice(0, 2000));
 }

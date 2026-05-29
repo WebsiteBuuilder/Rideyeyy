@@ -77,7 +77,7 @@ export async function handleTicket(
   switch (sub) {
     case 'close': {
       const reason = interaction.options.getString('reason') ?? undefined;
-      await services.ticket.closeTicket(channelId, reason);
+      await services.ticket.closeTicket(interaction.client, channelId, reason);
       await ephemeralReply(interaction, 'Ticket closed.');
       break;
     }
@@ -94,7 +94,7 @@ export async function handleTicket(
       break;
     }
     case 'reopen': {
-      await services.ticket.reopenTicket(channelId);
+      await services.ticket.reopenTicket(interaction.client, channelId);
       await ephemeralReply(interaction, 'Ticket reopened.');
       break;
     }

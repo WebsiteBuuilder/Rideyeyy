@@ -64,7 +64,12 @@ export async function handleCrateButton(
 
   try {
     await services.user.ensureUser(interaction.user.id);
-    const rewards = await services.crate.openCrate(interaction.user.id, crateType);
+    const guildId = interaction.guildId ?? interaction.guild?.id;
+    if (!guildId) {
+      await interaction.reply({ content: 'This command must be used in a server.', ephemeral: true });
+      return;
+    }
+    const rewards = await services.crate.openCrate(interaction.user.id, crateType, interaction.client, guildId);
     const text = rewards.map((r) => r.description).join('\n');
     await interaction.update({
       embeds: [

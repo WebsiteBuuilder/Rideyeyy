@@ -5,6 +5,7 @@ import {
   GuildMember,
   OverwriteType,
   PermissionFlagsBits,
+  TextChannel,
 } from 'discord.js';
 import { Pool } from 'pg';
 import { config } from '../config';
@@ -120,7 +121,7 @@ export class TicketService {
     return result.rows[0] ?? null;
   }
 
-  async closeTicket(channelId: Snowflake, reason?: string): Promise<void> {
+  async closeTicket(client: Client, channelId: Snowflake, reason?: string): Promise<void> {
     const ticket = await this.getTicketByChannel(channelId);
     if (!ticket) throw new Error('Ticket not found');
 
@@ -129,6 +130,13 @@ export class TicketService {
       `UPDATE tickets SET status = 'closed', closed_at = NOW(), metadata = $2 WHERE channel_id = $1`,
       [channelId, JSON.stringify(metadata)]
     );
+
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    if (channel instanceof TextChannel) {
+      await channel.permissionOverwrites.edit(String(ticket.user_id), {
+        ViewChannel: false,
+      });
+    }
   }
 
   async assignTicket(channelId: Snowflake, staffId: Snowflake): Promise<void> {
@@ -148,10 +156,22 @@ export class TicketService {
     ]);
   }
 
-  async reopenTicket(channelId: Snowflake): Promise<void> {
+  async reopenTicket(client: Client, channelId: Snowflake): Promise<void> {
+    const ticket = await this.getTicketByChannel(channelId);
+    if (!ticket) throw new Error('Ticket not found');
+
     await this.pool.query(
       `UPDATE tickets SET status = 'open', closed_at = NULL WHERE channel_id = $1`,
       [channelId]
     );
+
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    if (channel instanceof TextChannel) {
+      await channel.permissionOverwrites.edit(String(ticket.user_id), {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+      });
+    }
   }
 }

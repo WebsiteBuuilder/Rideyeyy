@@ -25,6 +25,7 @@ import type { AppServices } from './types';
 import { registerGuildMemberAdd } from './events/guildMemberAdd';
 import { startDailySnapshotJob } from './jobs/dailySnapshotJob';
 import { startInviteValidatorJob } from './jobs/inviteValidatorJob';
+import { startBlackjackTimeoutJob } from './jobs/blackjackTimeoutJob';
 import * as economyCmd from './commands/economy';
 import * as adminCmd from './commands/admin';
 import * as gamblingCmd from './commands/gambling';
@@ -41,6 +42,7 @@ async function registerCommands(): Promise<void> {
     economyCmd.payData.toJSON(),
     economyCmd.transactionsData.toJSON(),
     economyCmd.leaderboardData.toJSON(),
+    economyCmd.inventoryData.toJSON(),
     adminCmd.data.toJSON(),
     gamblingCmd.coinflipData.toJSON(),
     gamblingCmd.diceData.toJSON(),
@@ -87,6 +89,9 @@ async function handleInteraction(interaction: Interaction, services: AppServices
           break;
         case 'leaderboard':
           await economyCmd.handleLeaderboard(interaction, services);
+          break;
+        case 'inventory':
+          await economyCmd.handleInventory(interaction, services);
           break;
         case 'admin':
           await adminCmd.execute(interaction, services);
@@ -203,6 +208,7 @@ async function main(): Promise<void> {
     await services.invite.syncGuildInvites(guild);
     startDailySnapshotJob(services.backup, services.logger);
     startInviteValidatorJob(c, services.invite, services.logger);
+    startBlackjackTimeoutJob(services.gambling, services.logger);
   });
 
   client.on(Events.InteractionCreate, (interaction) => {

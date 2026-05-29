@@ -5,7 +5,7 @@ import { config } from '../config';
 import { EconomyService, InsufficientFundsError } from './EconomyService';
 import { LoggerService } from './LoggerService';
 import type { Card, Rank, Suit, Snowflake, BlackjackStatus } from '../types';
-import { parseAmount, assertPositive } from '../utils/math';
+import { assertPositive } from '../utils/math';
 
 const SUITS: Suit[] = ['H', 'D', 'C', 'S'];
 const RANKS: Rank[] = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -62,20 +62,10 @@ export class GamblingService {
       await this.economy.addBalance(userId, payout, 'Coinflip Win', 'gamble', batchId, { game: 'coinflip' }, 'gamble_win');
     }
 
-    return {
-      won,
-      choice,
-      outcome,
-      payout,
-      net: payout.minus(amount),
-    };
+    return { won, choice, outcome, payout, net: payout.minus(amount) };
   }
 
-  async dice(
-    userId: Snowflake,
-    amount: Decimal,
-    target: number
-  ): Promise<DiceResult> {
+  async dice(userId: Snowflake, amount: Decimal, target: number): Promise<DiceResult> {
     this.validateBet(amount);
     if (target < 1 || target > 6) {
       throw new Error('Target must be between 1 and 6');
@@ -92,7 +82,12 @@ export class GamblingService {
     if (roll === target) {
       payout = amount.mul(config.gambling.diceTargetMultiplier);
       description = `Exact hit! ${config.gambling.diceTargetMultiplier}x payout.`;
-    } else if (roll === target - 1 || roll === target + 1 || (target === 1 && roll === 6) || (target === 6 && roll === 1)) {
+    } else if (
+      roll === target - 1 ||
+      roll === target + 1 ||
+      (target === 1 && roll === 6) ||
+      (target === 6 && roll === 1)
+    ) {
       payout = amount.mul(config.gambling.diceAdjacentMultiplier);
       description = `Close! ${config.gambling.diceAdjacentMultiplier}x payout.`;
     }
@@ -104,7 +99,7 @@ export class GamblingService {
     return { roll, target, payout, net: payout.minus(amount), description };
   }
 
-  private createDeck(): Card[] {
+  createDeck(): Card[] {
     const deck: Card[] = [];
     for (const suit of SUITS) {
       for (const rank of RANKS) {
@@ -116,6 +111,30 @@ export class GamblingService {
       [deck[i], deck[j]] = [deck[j], deck[i]];
     }
     return deck;
+  }
+
+  private rebuildDeckFromHands(playerHand: Card[], dealerHand: Card[]): Card[] {
+    const deck = this.createDeck();
+    const removeCard = (hand: Card[], card: Card) => {
+      const idx = deck.findIndex((c) => c.rank === card.rank && c.suit === card.suit);
+      if (idx >= 0) deck.splice(idx, 1);
+    };
+    for (const c of playerHand) removeCard(playerHand, c);
+    for (const c of dealerHand) removeCard(dealerHand, c);
+    return deck;
+  }
+
+  private parseDeck(raw: unknown, playerHand: Card[], dealerHand: Card[]): Card[] {
+    if (Array.isArray(raw) && raw.length > 0) {
+      return raw as Card[];
+    }
+    return this.rebuildDeckFromHands(playerHand, dealerHand);
+  }
+
+  private drawCard(deck: Card[]): Card {
+    const card = deck.pop();
+    if (!card) throw new Error('Deck exhausted');
+    return card;
   }
 
   handValue(hand: Card[]): number {
@@ -142,11 +161,17 @@ export class GamblingService {
     return hand.length === 2 && this.handValue(hand) === 21;
   }
 
+  isSoft17(hand: Card[]): boolean {
+    if (this.handValue(hand) !== 17) return false;
+    return hand.some((c) => c.rank === 'A');
+  }
+
   async startBlackjack(userId: Snowflake, betAmount: Decimal): Promise<{
     gameId: string;
     playerHand: Card[];
     dealerHand: Card[];
     status: BlackjackStatus;
+    canDouble: boolean;
   }> {
     this.validateBet(betAmount);
 
@@ -159,43 +184,61 @@ export class GamblingService {
     }
 
     const deck = this.createDeck();
-    const playerHand = [deck.pop()!, deck.pop()!];
-    const dealerHand = [deck.pop()!, deck.pop()!];
+    const playerHand = [this.drawCard(deck), this.drawCard(deck)];
+    const dealerHand = [this.drawCard(deck), this.drawCard(deck)];
 
     const batchId = randomUUID();
-    const betTx = await this.economy.removeBalance(userId, betAmount, 'Blackjack Bet', 'gamble', batchId, undefined, 'gamble_loss');
-
-    let status: BlackjackStatus = 'player_turn';
-    let result: string | null = null;
+    const betTx = await this.economy.removeBalance(
+      userId,
+      betAmount,
+      'Blackjack Bet',
+      'gamble',
+      batchId,
+      undefined,
+      'gamble_loss'
+    );
 
     if (this.isBlackjack(playerHand)) {
-      status = 'completed';
-      result = 'blackjack';
       const payout = betAmount.mul(2.5);
       await this.economy.addBalance(userId, payout, 'Blackjack Natural', 'gamble', batchId, undefined, 'gamble_win');
       const insert = await this.pool.query<{ game_id: string }>(
         `INSERT INTO blackjack_games
-          (user_id, bet_amount, player_hand_json, dealer_hand_json, status, result, player_payout, completed_at, bet_transaction_id, payout_transaction_id)
-         VALUES ($1, $2, $3, $4, 'completed', 'blackjack', $5, NOW(), $6, NULL)
+          (user_id, bet_amount, player_hand_json, dealer_hand_json, deck_json, status, result, player_payout, completed_at, bet_transaction_id)
+         VALUES ($1, $2, $3, $4, $5, 'completed', 'blackjack', $6, NOW(), $7)
          RETURNING game_id`,
-        [userId, betAmount.toFixed(2), JSON.stringify(playerHand), JSON.stringify(dealerHand), payout.toFixed(2), betTx]
+        [
+          userId,
+          betAmount.toFixed(2),
+          JSON.stringify(playerHand),
+          JSON.stringify(dealerHand),
+          JSON.stringify(deck),
+          payout.toFixed(2),
+          betTx,
+        ]
       );
-      return { gameId: insert.rows[0].game_id, playerHand, dealerHand, status: 'completed' };
+      return {
+        gameId: insert.rows[0].game_id,
+        playerHand,
+        dealerHand,
+        status: 'completed',
+        canDouble: false,
+      };
     }
 
     const insert = await this.pool.query<{ game_id: string }>(
       `INSERT INTO blackjack_games
-        (user_id, bet_amount, player_hand_json, dealer_hand_json, status, bet_transaction_id)
-       VALUES ($1, $2, $3, $4, 'player_turn', $5)
+        (user_id, bet_amount, player_hand_json, dealer_hand_json, deck_json, status, bet_transaction_id)
+       VALUES ($1, $2, $3, $4, $5, 'player_turn', $6)
        RETURNING game_id`,
-      [userId, betAmount.toFixed(2), JSON.stringify(playerHand), JSON.stringify(dealerHand), betTx]
+      [userId, betAmount.toFixed(2), JSON.stringify(playerHand), JSON.stringify(dealerHand), JSON.stringify(deck), betTx]
     );
 
     return {
       gameId: insert.rows[0].game_id,
       playerHand,
       dealerHand,
-      status,
+      status: 'player_turn',
+      canDouble: true,
     };
   }
 
@@ -206,11 +249,15 @@ export class GamblingService {
     );
     if (result.rowCount === 0) return null;
     const row = result.rows[0];
+    const playerHand = row.player_hand_json as Card[];
+    const dealerHand = row.dealer_hand_json as Card[];
     return {
       ...row,
-      player_hand_json: row.player_hand_json as Card[],
-      dealer_hand_json: row.dealer_hand_json as Card[],
+      player_hand_json: playerHand,
+      dealer_hand_json: dealerHand,
+      deck_json: this.parseDeck(row.deck_json, playerHand, dealerHand),
       bet_amount: new Decimal(row.bet_amount),
+      doubled: Boolean(row.doubled),
     };
   }
 
@@ -220,23 +267,73 @@ export class GamblingService {
       throw new Error('Invalid game state');
     }
 
-    const deck = this.createDeck();
-    const playerHand = [...game.player_hand_json, deck.pop()!];
+    const deck = [...game.deck_json];
+    const playerHand = [...game.player_hand_json, this.drawCard(deck)];
     const value = this.handValue(playerHand);
 
     if (value > 21) {
       await this.pool.query(
-        `UPDATE blackjack_games SET player_hand_json = $1, status = 'completed', result = 'busted', completed_at = NOW() WHERE game_id = $2`,
-        [JSON.stringify(playerHand), gameId]
+        `UPDATE blackjack_games SET player_hand_json = $1, deck_json = $2, status = 'completed', result = 'busted', completed_at = NOW() WHERE game_id = $3`,
+        [JSON.stringify(playerHand), JSON.stringify(deck), gameId]
       );
       return { playerHand, busted: true };
     }
 
-    await this.pool.query('UPDATE blackjack_games SET player_hand_json = $1 WHERE game_id = $2', [
-      JSON.stringify(playerHand),
-      gameId,
-    ]);
+    await this.pool.query(
+      'UPDATE blackjack_games SET player_hand_json = $1, deck_json = $2 WHERE game_id = $3',
+      [JSON.stringify(playerHand), JSON.stringify(deck), gameId]
+    );
     return { playerHand, busted: false };
+  }
+
+  async doubleDown(gameId: string, userId: Snowflake): Promise<{
+    playerHand: Card[];
+    dealerHand: Card[];
+    result: string;
+    payout: Decimal;
+    busted: boolean;
+  }> {
+    const game = await this.getBlackjackGame(gameId, userId);
+    if (!game || game.status !== 'player_turn') {
+      throw new Error('Invalid game state');
+    }
+    if (game.doubled) {
+      throw new Error('Already doubled down');
+    }
+    if (game.player_hand_json.length !== 2) {
+      throw new Error('Double down only allowed with two cards');
+    }
+
+    const extraBet = game.bet_amount;
+    this.validateBet(extraBet);
+    await this.economy.removeBalance(userId, extraBet, 'Blackjack Double Down', 'gamble', undefined, undefined, 'gamble_loss');
+
+    const deck = [...game.deck_json];
+    const playerHand = [...game.player_hand_json, this.drawCard(deck)];
+    const newBetTotal = game.bet_amount.mul(2);
+
+    await this.pool.query(
+      `UPDATE blackjack_games SET bet_amount = $1, doubled = TRUE, player_hand_json = $2, deck_json = $3 WHERE game_id = $4`,
+      [newBetTotal.toFixed(2), JSON.stringify(playerHand), JSON.stringify(deck), gameId]
+    );
+
+    if (this.handValue(playerHand) > 21) {
+      await this.pool.query(
+        `UPDATE blackjack_games SET status = 'completed', result = 'busted', completed_at = NOW() WHERE game_id = $1`,
+        [gameId]
+      );
+      return { playerHand, dealerHand: game.dealer_hand_json, result: 'busted', payout: new Decimal(0), busted: true };
+    }
+
+    const resolved = await this.resolveDealer(
+      gameId,
+      userId,
+      playerHand,
+      game.dealer_hand_json,
+      deck,
+      newBetTotal
+    );
+    return { ...resolved, busted: false };
   }
 
   async stand(gameId: string, userId: Snowflake): Promise<{
@@ -250,17 +347,31 @@ export class GamblingService {
       throw new Error('Invalid game state');
     }
 
-    const playerHand = game.player_hand_json;
-    let dealerHand = [...game.dealer_hand_json];
-    const deck = this.createDeck();
+    return this.resolveDealer(
+      gameId,
+      userId,
+      game.player_hand_json,
+      game.dealer_hand_json,
+      [...game.deck_json],
+      game.bet_amount
+    );
+  }
 
-    while (this.handValue(dealerHand) < 17) {
-      dealerHand.push(deck.pop()!);
+  private async resolveDealer(
+    gameId: string,
+    userId: Snowflake,
+    playerHand: Card[],
+    dealerHand: Card[],
+    deck: Card[],
+    bet: Decimal
+  ): Promise<{ playerHand: Card[]; dealerHand: Card[]; result: string; payout: Decimal; busted?: boolean }> {
+    let dealer = [...dealerHand];
+    while (this.handValue(dealer) < 17 || this.isSoft17(dealer)) {
+      dealer.push(this.drawCard(deck));
     }
 
     const playerVal = this.handValue(playerHand);
-    const dealerVal = this.handValue(dealerHand);
-    const bet = game.bet_amount;
+    const dealerVal = this.handValue(dealer);
 
     let result: string;
     let payout = new Decimal(0);
@@ -280,11 +391,11 @@ export class GamblingService {
     }
 
     await this.pool.query(
-      `UPDATE blackjack_games SET dealer_hand_json = $1, status = 'completed', result = $2, player_payout = $3, completed_at = NOW() WHERE game_id = $4`,
-      [JSON.stringify(dealerHand), result, payout.toFixed(2), gameId]
+      `UPDATE blackjack_games SET dealer_hand_json = $1, deck_json = $2, status = 'completed', result = $3, player_payout = $4, completed_at = NOW() WHERE game_id = $5`,
+      [JSON.stringify(dealer), JSON.stringify(deck), result, payout.toFixed(2), gameId]
     );
 
-    return { playerHand, dealerHand, result, payout };
+    return { playerHand, dealerHand: dealer, result, payout };
   }
 
   async surrender(gameId: string, userId: Snowflake): Promise<void> {
@@ -300,6 +411,30 @@ export class GamblingService {
       `UPDATE blackjack_games SET status = 'completed', result = 'surrender', player_payout = $1, completed_at = NOW() WHERE game_id = $2`,
       [refund.toFixed(2), gameId]
     );
+  }
+
+  async timeoutStaleGames(): Promise<number> {
+    const seconds = config.gambling.blackjackTimeoutSeconds;
+    const stale = await this.pool.query<{ game_id: string; user_id: string }>(
+      `SELECT game_id, user_id FROM blackjack_games
+       WHERE status = 'player_turn'
+       AND created_at < NOW() - ($1 || ' seconds')::INTERVAL`,
+      [String(seconds)]
+    );
+
+    for (const row of stale.rows) {
+      try {
+        await this.stand(row.game_id, row.user_id);
+        await this.pool.query(
+          `UPDATE blackjack_games SET result = 'timed_out', status = 'timed_out' WHERE game_id = $1`,
+          [row.game_id]
+        );
+      } catch (err) {
+        this.logger.warn('Blackjack timeout failed', { userId: row.user_id, commandName: 'blackjackTimeout' });
+      }
+    }
+
+    return stale.rowCount ?? 0;
   }
 
   formatHand(hand: Card[], hideSecond?: boolean): string {

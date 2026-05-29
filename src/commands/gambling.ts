@@ -12,6 +12,7 @@ import { InsufficientFundsError } from '../services/EconomyService';
 import { parseAmount, formatRC } from '../utils/math';
 import { ephemeralReply, checkCooldown } from '../utils/discord';
 import { config } from '../config';
+import type Decimal from 'decimal.js';
 
 export const coinflipData = new SlashCommandBuilder()
   .setName('coinflip')
@@ -109,9 +110,14 @@ export async function handleBlackjack(
       game.dealerHand,
       game.status === 'completed'
     );
-    const row = game.status === 'player_turn' ? buildBlackjackButtons(game.gameId) : null;
+    const row =
+      game.status === 'player_turn' ? buildBlackjackButtons(game.gameId, game.canDouble) : null;
+
+    const naturalBlackjack =
+      game.status === 'completed' ? '🃏 **BLACKJACK!** Natural 21 — 2.5× payout applied.' : undefined;
 
     await interaction.reply({
+      content: naturalBlackjack,
       embeds: [embed],
       components: row ? [row] : [],
       ephemeral: true,
@@ -136,17 +142,32 @@ function buildBlackjackEmbed(
   return new EmbedBuilder()
     .setTitle('Blackjack')
     .addFields(
-      { name: 'Your Hand', value: playerStr, inline: true },
+      { name: 'Your Hand', value: `${playerStr} (${services.gambling.handValue(playerHand)})`, inline: true },
       { name: 'Dealer', value: dealerStr, inline: true }
     );
 }
 
-function buildBlackjackButtons(gameId: string): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+function buildBlackjackButtons(gameId: string, canDouble: boolean): ActionRowBuilder<ButtonBuilder> {
+  const buttons = [
     new ButtonBuilder().setCustomId(`bj:hit:${gameId}`).setLabel('Hit').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`bj:stand:${gameId}`).setLabel('Stand').setStyle(ButtonStyle.Success),
+  ];
+  if (canDouble) {
+    buttons.push(
+      new ButtonBuilder().setCustomId(`bj:double:${gameId}`).setLabel('Double').setStyle(ButtonStyle.Secondary)
+    );
+  }
+  buttons.push(
     new ButtonBuilder().setCustomId(`bj:surrender:${gameId}`).setLabel('Surrender').setStyle(ButtonStyle.Danger)
   );
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons.slice(0, 5));
+}
+
+function formatBlackjackResult(
+  services: AppServices,
+  result: { playerHand: Card[]; dealerHand: Card[]; result: string; payout: Decimal }
+): string {
+  return `**${result.result.toUpperCase()}** — Player: ${services.gambling.formatHand(result.playerHand)} (${services.gambling.handValue(result.playerHand)}) | Dealer: ${services.gambling.formatHand(result.dealerHand)} (${services.gambling.handValue(result.dealerHand)}) | Payout: ${formatRC(result.payout)}`;
 }
 
 export async function handleBlackjackButton(
@@ -161,26 +182,37 @@ export async function handleBlackjackButton(
       const { playerHand, busted } = await services.gambling.hit(gameId, interaction.user.id);
       if (busted) {
         await interaction.update({
-          content: `Bust! Hand: ${services.gambling.formatHand(playerHand)}`,
+          content: `Bust! Hand: ${services.gambling.formatHand(playerHand)} (${services.gambling.handValue(playerHand)})`,
           embeds: [],
           components: [],
         });
         return;
       }
       const game = await services.gambling.getBlackjackGame(gameId, interaction.user.id);
-      if (!game) return;
+      const canDouble = game ? game.player_hand_json.length === 2 && !game.doubled : false;
       await interaction.update({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle('Blackjack')
-            .setDescription(`Your hand: ${services.gambling.formatHand(playerHand)} (${services.gambling.handValue(playerHand)})`),
-        ],
-        components: [buildBlackjackButtons(gameId)],
+        embeds: [buildBlackjackEmbed(services, playerHand, game!.dealer_hand_json, false)],
+        components: [buildBlackjackButtons(gameId, canDouble)],
       });
     } else if (action === 'stand') {
       const result = await services.gambling.stand(gameId, interaction.user.id);
       await interaction.update({
-        content: `**${result.result.toUpperCase()}** — Player: ${services.gambling.formatHand(result.playerHand)} (${services.gambling.handValue(result.playerHand)}) | Dealer: ${services.gambling.formatHand(result.dealerHand)} (${services.gambling.handValue(result.dealerHand)}) | Payout: ${formatRC(result.payout)}`,
+        content: formatBlackjackResult(services, result),
+        embeds: [],
+        components: [],
+      });
+    } else if (action === 'double') {
+      const result = await services.gambling.doubleDown(gameId, interaction.user.id);
+      if (result.busted) {
+        await interaction.update({
+          content: `Double down — Bust! Hand: ${services.gambling.formatHand(result.playerHand)}`,
+          embeds: [],
+          components: [],
+        });
+        return;
+      }
+      await interaction.update({
+        content: formatBlackjackResult(services, result),
         embeds: [],
         components: [],
       });
@@ -189,9 +221,20 @@ export async function handleBlackjackButton(
       await interaction.update({ content: 'Surrendered. Half bet returned.', embeds: [], components: [] });
     }
   } catch (err) {
-    await interaction.reply({
-      content: err instanceof Error ? err.message : 'Action failed',
-      ephemeral: true,
-    });
+    if (err instanceof InsufficientFundsError) {
+      await interaction.reply({ content: 'Insufficient Route Cash to double down.', ephemeral: true });
+      return;
+    }
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({
+        content: err instanceof Error ? err.message : 'Action failed',
+        ephemeral: true,
+      });
+    } else {
+      await interaction.reply({
+        content: err instanceof Error ? err.message : 'Action failed',
+        ephemeral: true,
+      });
+    }
   }
 }

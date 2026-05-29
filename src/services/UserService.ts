@@ -76,6 +76,22 @@ export class UserService {
     );
   }
 
+  async getInventory(userId: Snowflake): Promise<
+    Array<{ item_type: string; quantity: number; item_metadata: Record<string, unknown> | null; acquired_at: Date }>
+  > {
+    const result = await this.pool.query<{
+      item_type: string;
+      quantity: number;
+      item_metadata: Record<string, unknown> | null;
+      acquired_at: Date;
+    }>(
+      `SELECT item_type, quantity, item_metadata, acquired_at
+       FROM user_inventory WHERE user_id = $1 ORDER BY acquired_at DESC LIMIT 50`,
+      [userId]
+    );
+    return result.rows;
+  }
+
   async getActivity(userId: Snowflake): Promise<{ messageCount: number; vcMinutes: number }> {
     const result = await this.pool.query<{ message_count: number; vc_minutes: number }>(
       'SELECT message_count, vc_minutes FROM user_activity WHERE user_id = $1',

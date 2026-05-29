@@ -1,4 +1,5 @@
 import { randomInt } from 'crypto';
+import type { Client } from 'discord.js';
 import { Pool } from 'pg';
 import Decimal from 'decimal.js';
 import { config } from '../config';
@@ -73,7 +74,12 @@ export class CrateService {
     return rewards[rewards.length - 1];
   }
 
-  async openCrate(userId: Snowflake, crateType: CrateType): Promise<CrateOpenReward[]> {
+  async openCrate(
+    userId: Snowflake,
+    crateType: CrateType,
+    client: Client,
+    guildId: Snowflake
+  ): Promise<CrateOpenReward[]> {
     const price = this.getCratePrice(crateType);
     assertPositive(price);
 
@@ -87,7 +93,7 @@ export class CrateService {
 
     await this.economy.removeBalance(userId, price, `${crateType} Crate Purchase`, 'crate', undefined, undefined, 'crate_open');
 
-    const description = await this.applyReward(userId, picked, crateType);
+    const description = await this.applyReward(userId, picked, crateType, client, guildId);
     awarded.push({
       reward_type: picked.reward_type,
       reward_value: picked.reward_value,
@@ -108,7 +114,9 @@ export class CrateService {
   private async applyReward(
     userId: Snowflake,
     reward: { reward_type: string; reward_value: string | null; reward_metadata: unknown },
-    crateType: CrateType
+    crateType: CrateType,
+    client: Client,
+    guildId: Snowflake
   ): Promise<string> {
     switch (reward.reward_type) {
       case 'rc_payout': {
@@ -131,6 +139,21 @@ export class CrateService {
           ]
         );
         return `You received a **${reward.reward_type.replace(/_/g, ' ')}**!`;
+      case 'cosmetic_role': {
+        const meta = (reward.reward_metadata ?? {}) as { roleId?: string; temporary?: boolean };
+        const roleId = meta.roleId;
+        if (roleId && roleId !== '0') {
+          await this.user.addRole(client, guildId, userId, roleId);
+        }
+        await this.pool.query(
+          `INSERT INTO user_inventory (user_id, item_type, item_metadata, quantity)
+           VALUES ($1, $2, $3, 1)`,
+          [userId, 'cosmetic_role', JSON.stringify(meta)]
+        );
+        return roleId && roleId !== '0'
+          ? `You unlocked a **cosmetic role**!`
+          : `You won a cosmetic reward (configure role ID in crate rewards).`;
+      }
       case 'nothing':
         return 'Better luck next time — nothing this time.';
       default:
