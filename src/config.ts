@@ -94,6 +94,12 @@ export const config = {
     snapshot: envString('SNAPSHOT_CRON_SCHEDULE', '0 0 * * *'),
     inviteValidator: envString('INVITE_VALIDATOR_CRON_SCHEDULE', '0 * * * *'),
   },
+  daily: {
+    reward: envInt('DAILY_REWARD', 150),
+    cooldownHours: envInt('DAILY_COOLDOWN_HOURS', 20),
+    streakBonus: envInt('DAILY_STREAK_BONUS', 25),
+    maxStreak: envInt('DAILY_MAX_STREAK', 30),
+  },
   limits: {
     commandCooldownMs: envInt('COMMAND_COOLDOWN_MS', 3000),
     gambleCooldownMs: envInt('GAMBLE_COOLDOWN_MS', 5000),
