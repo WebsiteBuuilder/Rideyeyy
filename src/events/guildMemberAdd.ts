@@ -7,8 +7,10 @@ export function registerGuildMemberAdd(client: Client, services: AppServices): v
     if (member.guild.id !== config.discord.guildId) return;
 
     try {
-      await services.invite.syncGuildInvites(member.guild);
+      // Detect which invite was used *before* syncing — detectInviteUsed compares
+      // against the stale in-memory cache, so syncing first would wipe that snapshot.
       const detected = await services.invite.detectInviteUsed(member.guild);
+      await services.invite.syncGuildInvites(member.guild);
 
       if (detected) {
         await services.invite.trackPendingInvite(member.id, detected.inviterId, detected.code);
