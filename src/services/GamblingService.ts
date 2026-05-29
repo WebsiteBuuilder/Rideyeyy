@@ -444,9 +444,12 @@ export class GamblingService {
 
     for (const row of stale.rows) {
       try {
+        // resolveDealer (called by stand) sets status='completed'; we overwrite
+        // result and status together in a single follow-up query so there is no
+        // window where the row appears as a normal completed game.
         await this.stand(row.game_id, row.user_id);
         await this.pool.query(
-          `UPDATE blackjack_games SET result = 'timed_out', status = 'timed_out' WHERE game_id = $1`,
+          `UPDATE blackjack_games SET result = 'timed_out', status = 'timed_out' WHERE game_id = $1 AND status = 'completed'`,
           [row.game_id]
         );
       } catch (err) {
