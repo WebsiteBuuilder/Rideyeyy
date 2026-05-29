@@ -28,6 +28,7 @@ import { startInviteValidatorJob } from './jobs/inviteValidatorJob';
 import { startBlackjackTimeoutJob } from './jobs/blackjackTimeoutJob';
 import { startCosmeticRoleExpiryJob } from './jobs/cosmeticRoleExpiryJob';
 import * as economyCmd from './commands/economy';
+// economyCmd now exports: data, payData, tipData, dailyData, statsData, rankData, transactionsData, leaderboardData, inventoryData
 import * as adminCmd from './commands/admin';
 import * as gamblingCmd from './commands/gambling';
 import * as cratesCmd from './commands/crates';
@@ -41,6 +42,10 @@ async function registerCommands(): Promise<void> {
   const commands = [
     economyCmd.data.toJSON(),
     economyCmd.payData.toJSON(),
+    economyCmd.tipData.toJSON(),
+    economyCmd.dailyData.toJSON(),
+    economyCmd.statsData.toJSON(),
+    economyCmd.rankData.toJSON(),
     economyCmd.transactionsData.toJSON(),
     economyCmd.leaderboardData.toJSON(),
     economyCmd.inventoryData.toJSON(),
@@ -89,12 +94,24 @@ async function handleInteraction(interaction: Interaction, services: AppServices
     const { commandName } = interaction;
     try {
       switch (commandName) {
-        case 'balance':
-          await economyCmd.handleBalance(interaction, services);
-          break;
-        case 'pay':
-          await economyCmd.handlePay(interaction, services);
-          break;
+      case 'balance':
+        await economyCmd.handleBalance(interaction, services);
+        break;
+      case 'pay':
+        await economyCmd.handlePay(interaction, services);
+        break;
+      case 'tip':
+        await economyCmd.handleTip(interaction, services);
+        break;
+      case 'daily':
+        await economyCmd.handleDaily(interaction, services);
+        break;
+      case 'stats':
+        await economyCmd.handleStats(interaction, services);
+        break;
+      case 'rank':
+        await economyCmd.handleRank(interaction, services);
+        break;
         case 'transactions':
           await economyCmd.handleTransactions(interaction, services);
           break;
