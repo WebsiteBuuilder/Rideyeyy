@@ -5,12 +5,62 @@ import {
   ButtonStyle,
   ChatInputCommandInteraction,
   ComponentType,
+  EmbedBuilder,
+  Guild,
   GuildMember,
   MessageComponentInteraction,
   SlashCommandBuilder,
 } from 'discord.js';
 import { config } from '../config';
 import { CONFIRM_TIMEOUT_MS } from './constants';
+
+// ---------------------------------------------------------------------------
+// Embed color palette (matches spec)
+// ---------------------------------------------------------------------------
+export const COLOR = {
+  PRIMARY: 0x00e5a0,   // mint — neutral/info
+  ERROR: 0xef4444,     // red — errors
+  WIN: 0x10b981,       // green — wins/success
+  JACKPOT: 0xf59e0b,   // gold — milestone/jackpot
+  RARE: 0x7c3aed,      // purple — rare/premium
+} as const;
+
+/** Build a base embed pre-populated with footer (RC balance + Guhd Rides label), timestamp, and color. */
+export function baseEmbed(
+  color: number,
+  balance: string,
+  guild?: Guild | null
+): EmbedBuilder {
+  const iconURL = guild?.iconURL() ?? undefined;
+  return new EmbedBuilder()
+    .setColor(color)
+    .setTimestamp()
+    .setFooter({ text: `RC Balance: ${balance} RC  •  Guhd Rides`, iconURL });
+}
+
+/** Reply ephemerally with a pre-built embed. */
+export async function ephemeralEmbed(
+  interaction: ChatInputCommandInteraction | MessageComponentInteraction,
+  embed: EmbedBuilder
+): Promise<void> {
+  if (interaction.replied || interaction.deferred) {
+    await interaction.followUp({ embeds: [embed], ephemeral: true });
+  } else {
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+  }
+}
+
+/** Reply publicly with a pre-built embed. */
+export async function publicEmbed(
+  interaction: ChatInputCommandInteraction | MessageComponentInteraction,
+  embed: EmbedBuilder
+): Promise<void> {
+  if (interaction.replied || interaction.deferred) {
+    await interaction.followUp({ embeds: [embed] });
+  } else {
+    await interaction.reply({ embeds: [embed] });
+  }
+}
 
 export type SlashCommandData = SlashCommandBuilder | Omit<SlashCommandBuilder, 'addSubcommand' | 'addSubcommandGroup'>;
 
