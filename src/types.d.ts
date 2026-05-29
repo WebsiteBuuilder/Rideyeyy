@@ -62,7 +62,7 @@ export interface TransactionRecord {
   transaction_batch_id: string | null;
 }
 
-export type BlackjackStatus = 'betting' | 'player_turn' | 'dealer_turn' | 'completed' | 'timed_out';
+export type BlackjackStatus = 'player_turn' | 'dealer_turn' | 'completed' | 'timed_out';
 export type BlackjackResult = 'win' | 'loss' | 'push' | 'blackjack' | 'surrender' | 'busted' | null;
 
 export interface BlackjackGameRow {
