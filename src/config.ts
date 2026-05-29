@@ -40,7 +40,7 @@ export const config = {
     token: requireEnv('DISCORD_TOKEN'),
     clientId: requireEnv('CLIENT_ID'),
     guildId: requireEnv('GUILD_ID'),
-    registerCommands: envBool('REGISTER_COMMANDS', false),
+    registerCommands: envBool('REGISTER_COMMANDS', true),
   },
   roles: {
     admin: requireEnv('ADMIN_ROLE_ID'),
