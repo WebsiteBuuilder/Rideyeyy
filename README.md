@@ -32,7 +32,7 @@ Copy `.env.example` to `.env` and fill in values:
 | `DISCORD_TOKEN` | Bot token |
 | `CLIENT_ID` | Application client ID |
 | `GUILD_ID` | Your server ID |
-| `DATABASE_URL` | PostgreSQL connection string |
+| `DATABASE_URL` | **Required.** Railway: Add Reference from PostgreSQL service (never type manually) |
 | `ADMIN_ROLE_ID` | Admin role for `/admin` commands |
 | `STAFF_ROLE_ID` | Staff role for tickets |
 | `TICKET_CATEGORY_ID` | Category for booking channels |
@@ -50,7 +50,7 @@ REGISTER_COMMANDS=true npm run dev
 
 1. Create a new project on [Railway](https://railway.app).
 2. Add **PostgreSQL** to the project (separate service).
-3. On your **bot** service → **Variables** → **Add Reference** → select Postgres → pick **`DATABASE_PRIVATE_URL`** (or `DATABASE_URL`). Do **not** type `postgresql://user:password@localhost...` manually.
+3. On your **bot** service → **Variables** → **Add Reference** → PostgreSQL → **`DATABASE_URL`** only. Do **not** type a connection string manually.
 4. Connect GitHub repo [WebsiteBuuilder/Rideyeyy](https://github.com/WebsiteBuuilder/Rideyeyy), branch `main`.
 5. Set Discord env vars (`DISCORD_TOKEN`, `CLIENT_ID`, `GUILD_ID`, `ADMIN_ROLE_ID`, etc.).
 6. Set `REGISTER_COMMANDS=true` for the first deploy, then `false`.

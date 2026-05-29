@@ -39,41 +39,12 @@ function envBool(key: string, defaultValue: boolean): boolean {
   return raw === 'true' || raw === '1';
 }
 
-/** Railway Postgres: prefer private URL when bot and DB are in the same project. */
-function resolveDatabaseUrl(): string {
-  const url =
-    process.env.DATABASE_PRIVATE_URL ||
-    process.env.DATABASE_URL;
-
-  if (!url) {
-    throw new Error(
-      'Missing DATABASE_URL. In Railway: add PostgreSQL, then on your bot service use Variables → Add Reference → Postgres → DATABASE_URL (or DATABASE_PRIVATE_URL).'
-    );
-  }
-
-  if (
-    url.includes('localhost') ||
-    url.includes('user:password@') ||
-    url.includes('@localhost:')
-  ) {
-    throw new Error(
-      'DATABASE_URL looks like a placeholder (localhost / user:password). Remove the manual DATABASE_URL on Railway and use Add Reference from your Postgres service instead.'
-    );
-  }
-
-  return url;
-}
-
 export const config = {
   discord: {
     token: requireEnv('DISCORD_TOKEN'),
     clientId: requireEnv('CLIENT_ID'),
     guildId: requireEnv('GUILD_ID'),
     registerCommands: envBool('REGISTER_COMMANDS', false),
-  },
-  database: {
-    url: resolveDatabaseUrl(),
-    poolMax: envInt('DB_POOL_MAX', 20),
   },
   roles: {
     admin: requireEnv('ADMIN_ROLE_ID'),
