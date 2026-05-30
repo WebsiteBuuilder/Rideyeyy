@@ -164,8 +164,9 @@ export function heroAmount(amount: string): string {
 }
 
 /** Compact inline amount */
-export function inlineRC(amount: string): string {
-  return `\`${ICON.coin} ${amount}\``;
+export function inlineRC(amount: string | number): string {
+  const formatted = typeof amount === 'number' ? amount.toString() : amount;
+  return `\`${ICON.coin} ${formatted}\``;
 }
 
 /** Net change with directional indicator */
@@ -395,10 +396,16 @@ export async function ephemeralEmbed(
   interaction: ChatInputCommandInteraction | MessageComponentInteraction,
   embed: EmbedBuilder
 ): Promise<void> {
-  if (interaction.replied || interaction.deferred) {
-    await interaction.followUp({ embeds: [embed], ephemeral: true });
-  } else {
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+  try {
+    if (interaction.deferred) {
+      await interaction.followUp({ embeds: [embed], ephemeral: true });
+    } else if (interaction.replied) {
+      await interaction.followUp({ embeds: [embed], ephemeral: true });
+    } else {
+      await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+  } catch (err) {
+    console.error('[v0] ephemeralEmbed error:', err);
   }
 }
 
@@ -407,10 +414,16 @@ export async function publicEmbed(
   interaction: ChatInputCommandInteraction | MessageComponentInteraction,
   embed: EmbedBuilder
 ): Promise<void> {
-  if (interaction.replied || interaction.deferred) {
-    await interaction.followUp({ embeds: [embed] });
-  } else {
-    await interaction.reply({ embeds: [embed] });
+  try {
+    if (interaction.deferred) {
+      await interaction.followUp({ embeds: [embed] });
+    } else if (interaction.replied) {
+      await interaction.followUp({ embeds: [embed] });
+    } else {
+      await interaction.reply({ embeds: [embed] });
+    }
+  } catch (err) {
+    console.error('[v0] publicEmbed error:', err);
   }
 }
 

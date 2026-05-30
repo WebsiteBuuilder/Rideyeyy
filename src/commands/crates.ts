@@ -21,7 +21,6 @@ import {
   BRAND,
   statBlock,
   statusBanner,
-  inlineRC,
 } from '../utils/discord';
 import { config } from '../config';
 
@@ -242,7 +241,7 @@ export async function handleCrateButton(
         .setTitle(`${ICON.loss} INSUFFICIENT FUNDS`)
         .setDescription(
           statusBanner(`${ICON.loss}  NOT ENOUGH RC  ${ICON.loss}`, 'loss') +
-          `\nNeed **${inlineRC(formatRC(meta.cost))}** for ${meta.label}\n` +
+          `\nNeed **\`${ICON.coin} ${formatRC(meta.cost)}\`** for ${meta.label}\n` +
           `${LINE}\n` +
           (needed > 0 ? `Short by **${ICON.coin} ${needed}**` : '')
         )

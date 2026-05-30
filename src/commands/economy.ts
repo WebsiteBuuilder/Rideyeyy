@@ -9,24 +9,18 @@ import { parseAmount, formatRC } from '../utils/math';
 import {
   ephemeralReply,
   checkCooldown,
-  baseEmbed,
   brandedEmbed,
   ephemeralEmbed,
   COLOR,
   progressBar,
-  meter,
   streakBar,
-  heroAmount,
-  rcDisplay,
-  netLabel,
-  statBlock,
-  inlineStat,
   statusBanner,
   LINE,
   THIN_LINE,
   SPACER,
   ICON,
   BRAND,
+  statBlock,
 } from '../utils/discord';
 import { config } from '../config';
 import {
@@ -125,7 +119,7 @@ export async function handleBalance(
   const embed = brandedEmbed(COLOR.ELECTRIC, formatRC(balance), interaction.guild)
     .setTitle(`${ICON.wallet} ${target.username}'s Wallet`)
     .setDescription(
-      `${heroAmount(formatRC(balance))}\n` +
+      `# ${ICON.coin} ${formatRC(balance)}\n` +
       `${LINE}\n` +
       statusBanner('ROUTE CASH BALANCE', 'info')
     )
@@ -168,7 +162,7 @@ export async function handlePay(
       .setTitle(`${ICON.check} TRANSFER COMPLETE`)
       .setDescription(
         statusBanner(`${ICON.win}  SENT SUCCESSFULLY  ${ICON.win}`, 'win') +
-        `\n${rcDisplay(formatRC(amount))} ${ICON.arrow} <@${recipient.id}>\n` +
+        `\n**${ICON.coin} ${formatRC(amount)}** ${ICON.arrow} <@${recipient.id}>\n` +
         `${LINE}`
       )
       .addFields(
