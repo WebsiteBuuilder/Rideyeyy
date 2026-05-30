@@ -12,8 +12,9 @@ export function parseAmount(input: string | number): Decimal {
   return d.toDecimalPlaces(2);
 }
 
-export function formatRC(amount: Decimal): string {
-  return `${amount.toFixed(2)} RC`;
+export function formatRC(amount: Decimal | number): string {
+  const d = amount instanceof Decimal ? amount : new Decimal(amount);
+  return `${d.toFixed(2)} RC`;
 }
 
 export function assertPositive(amount: Decimal): void {
@@ -29,3 +30,4 @@ export function toDbString(amount: Decimal): string {
 export function fromDbString(value: string): Decimal {
   return new Decimal(value);
 }
+
