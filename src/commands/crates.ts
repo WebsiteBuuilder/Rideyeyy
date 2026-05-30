@@ -202,10 +202,10 @@ export async function handleCrateButton(
 
     const rewards  = await services.crate.openCrate(interaction.user.id, crateType, interaction.client, guildId);
     const balance  = await services.economy.getBalance(interaction.user.id);
-    const rewardLines = rewards.map((r) => formatRewardLine(r.description));
+    const rewardLines = rewards.map((r: any) => formatRewardLine(r.description));
 
     // Determine if any high-value item was won
-    const hasRare = rewardLines.some((l) => l.includes(ICON.jackpot));
+    const hasRare = rewardLines.some((l: string) => l.includes(ICON.jackpot));
     const embedColor = hasRare ? (crateType === 'gold' ? COLOR.JACKPOT : COLOR.RARE) : meta.color;
     const statusStyle = hasRare ? 'jackpot' : 'win';
     const statusText = hasRare 

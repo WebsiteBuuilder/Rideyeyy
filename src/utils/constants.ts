@@ -1,0 +1,5 @@
+export const LEADERBOARD_DEFAULT_LIMIT = 10;
+export const TRANSACTIONS_DEFAULT_LIMIT = 10;
+export const TRANSACTIONS_MAX_LIMIT = 25;
+export const CONFIRM_TIMEOUT_MS = 30000;
+
