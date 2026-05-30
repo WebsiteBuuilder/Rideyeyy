@@ -6,7 +6,15 @@ import {
 import type { AppServices } from '../types';
 import { InsufficientFundsError } from '../services/EconomyService';
 import { parseAmount, formatRC } from '../utils/math';
-import { ephemeralReply, checkCooldown, baseEmbed, ephemeralEmbed, COLOR } from '../utils/discord';
+import {
+  ephemeralReply,
+  checkCooldown,
+  baseEmbed,
+  ephemeralEmbed,
+  COLOR,
+  progressBar,
+  DIVIDER,
+} from '../utils/discord';
 import { config } from '../config';
 import {
   LEADERBOARD_DEFAULT_LIMIT,
@@ -93,8 +101,10 @@ export async function handleBalance(
   await services.user.ensureUser(target.id);
   const balance = await services.economy.getBalance(target.id);
   const embed = baseEmbed(COLOR.PRIMARY, formatRC(balance), interaction.guild)
-    .setTitle('Route Cash Balance')
-    .setDescription(`**${target.username}** has **${formatRC(balance)}**`)
+    .setTitle('◈  Route Cash Wallet')
+    .setDescription(
+      `**${target.username}**'s vault\n${DIVIDER}\n## ${formatRC(balance)}`
+    )
     .setThumbnail(target.displayAvatarURL());
   await ephemeralEmbed(interaction, embed);
 }
@@ -125,12 +135,13 @@ export async function handlePay(
     await services.economy.transferBalance(interaction.user.id, recipient.id, amount, reason);
     const newBalance = await services.economy.getBalance(interaction.user.id);
     const embed = baseEmbed(COLOR.WIN, formatRC(newBalance), interaction.guild)
-      .setTitle('Transfer Successful')
+      .setTitle('✦  Transfer Complete')
+      .setDescription(`You sent **${formatRC(amount)}** to <@${recipient.id}>\n${DIVIDER}`)
       .addFields(
-        { name: 'To', value: `<@${recipient.id}>`, inline: true },
-        { name: 'Amount', value: formatRC(amount), inline: true },
-        { name: 'Reason', value: reason, inline: false },
-        { name: 'Your Balance', value: formatRC(newBalance), inline: false }
+        { name: '↘ Recipient', value: `<@${recipient.id}>`, inline: true },
+        { name: '✦ Amount', value: `**${formatRC(amount)}**`, inline: true },
+        { name: '◈ New Balance', value: formatRC(newBalance), inline: true },
+        { name: '✎ Reason', value: reason, inline: false }
       );
     await ephemeralEmbed(interaction, embed);
   } catch (err) {
@@ -166,9 +177,9 @@ export async function handleTip(
     await services.user.ensureUser(recipient.id);
     await services.economy.transferBalance(interaction.user.id, recipient.id, amount, 'Tip');
     const embed = baseEmbed(COLOR.WIN, formatRC(amount), interaction.guild)
-      .setTitle('Tip Sent')
+      .setTitle('✦  Tip Sent!')
       .setDescription(
-        `<@${interaction.user.id}> tipped **${formatRC(amount)}** to <@${recipient.id}>!`
+        `<@${interaction.user.id}> just tipped <@${recipient.id}>\n${DIVIDER}\n## +${formatRC(amount)}`
       );
     // Tips are public
     if (interaction.replied || interaction.deferred) {
@@ -199,15 +210,22 @@ export async function handleDaily(
       config.daily.maxStreak
     );
     const newBalance = await services.economy.getBalance(interaction.user.id);
-    const streakLabel = streak >= config.daily.maxStreak ? `${streak} (MAX)` : String(streak);
-    const embed = baseEmbed(COLOR.WIN, formatRC(newBalance), interaction.guild)
-      .setTitle('Daily Reward Claimed!')
+    const maxed = streak >= config.daily.maxStreak;
+    const streakLabel = maxed ? `🔥 ${streak} \`MAX\`` : `🔥 ${streak}`;
+    const streakBar = progressBar(streak, config.daily.maxStreak, 12);
+    const embed = baseEmbed(maxed ? COLOR.JACKPOT : COLOR.WIN, formatRC(newBalance), interaction.guild)
+      .setTitle('✦  Daily Reward Claimed!')
+      .setDescription(`## +${formatRC(amount)}\n${DIVIDER}`)
       .addFields(
-        { name: 'Reward', value: formatRC(amount), inline: true },
-        { name: 'Streak', value: streakLabel, inline: true },
-        { name: 'Balance', value: formatRC(newBalance), inline: true },
+        { name: '🔥 Streak', value: streakLabel, inline: true },
+        { name: '◈ Balance', value: formatRC(newBalance), inline: true },
         {
-          name: 'Next Claim',
+          name: `Streak Progress  (${streak}/${config.daily.maxStreak})`,
+          value: `${streakBar}${maxed ? '\n**Streak maxed — top bonus active!**' : ''}`,
+          inline: false,
+        },
+        {
+          name: '⏱ Next Claim',
           value: `<t:${Math.floor(nextClaimAt.getTime() / 1000)}:R>`,
           inline: false,
         }
@@ -217,9 +235,9 @@ export async function handleDaily(
     const nextClaimAt = (err as Error & { nextClaimAt?: Date }).nextClaimAt;
     if (nextClaimAt) {
       const embed = baseEmbed(COLOR.ERROR, '—', interaction.guild)
-        .setTitle('Daily Already Claimed')
+        .setTitle('⏱  Daily on Cooldown')
         .setDescription(
-          `You can claim your next daily reward <t:${Math.floor(nextClaimAt.getTime() / 1000)}:R>.`
+          `You've already claimed today.\n${DIVIDER}\nCome back <t:${Math.floor(nextClaimAt.getTime() / 1000)}:R> to keep your streak alive.`
         );
       await ephemeralEmbed(interaction, embed);
       return;
@@ -238,14 +256,14 @@ export async function handleStats(
   const activity = await services.user.getActivity(target.id);
   const inviteCount = await services.economy.getValidInviteCount(target.id);
 
-  const embed = baseEmbed(COLOR.PRIMARY, formatRC(balance), interaction.guild)
-    .setTitle(`${target.username}'s Stats`)
+  const embed = baseEmbed(COLOR.INFO, formatRC(balance), interaction.guild)
+    .setTitle(`◈  ${target.username}'s Stats`)
+    .setDescription(`## ${formatRC(balance)}\n${DIVIDER}`)
     .setThumbnail(target.displayAvatarURL())
     .addFields(
-      { name: 'RC Balance', value: formatRC(balance), inline: true },
-      { name: 'Messages', value: String(activity.messageCount), inline: true },
-      { name: 'VC Minutes', value: String(activity.vcMinutes), inline: true },
-      { name: 'Valid Invites', value: String(inviteCount), inline: true }
+      { name: '✉ Messages', value: `**${activity.messageCount}**`, inline: true },
+      { name: '🎙 VC Minutes', value: `**${activity.vcMinutes}**`, inline: true },
+      { name: '➤ Valid Invites', value: `**${inviteCount}**`, inline: true }
     );
   await ephemeralEmbed(interaction, embed);
 }
@@ -259,11 +277,19 @@ export async function handleRank(
   const { rank, total } = await services.economy.getUserRank(target.id);
   const balance = await services.economy.getBalance(target.id);
 
-  const embed = baseEmbed(COLOR.PRIMARY, formatRC(balance), interaction.guild)
-    .setTitle('Leaderboard Rank')
-    .setDescription(`**${target.username}** is ranked **#${rank}** out of **${total}** users`)
+  // Higher position = fuller bar (rank #1 fills the meter)
+  const rankBar = progressBar(Math.max(0, total - rank + 1), Math.max(1, total), 12);
+  const topPct = total > 0 ? Math.max(1, Math.round((rank / total) * 100)) : 100;
+  const embed = baseEmbed(rank <= 3 ? COLOR.JACKPOT : COLOR.PRIMARY, formatRC(balance), interaction.guild)
+    .setTitle('▲  Leaderboard Rank')
+    .setDescription(
+      `**${target.username}**\n${DIVIDER}\n## #${rank} \`/ ${total}\`\nTop **${topPct}%** of all holders`
+    )
     .setThumbnail(target.displayAvatarURL())
-    .addFields({ name: 'RC Balance', value: formatRC(balance), inline: true });
+    .addFields(
+      { name: 'Standing', value: rankBar, inline: false },
+      { name: '◈ Balance', value: formatRC(balance), inline: true }
+    );
   await ephemeralEmbed(interaction, embed);
 }
 
@@ -278,13 +304,14 @@ export async function handleTransactions(
     return;
   }
   const balance = await services.economy.getBalance(interaction.user.id);
-  const lines = txs.map(
-    (t) =>
-      `\`${t.timestamp.toISOString().slice(0, 10)}\` **${t.type}** ${t.amount} RC → ${t.balance_after} RC — ${t.reason}`
-  );
-  const embed = baseEmbed(COLOR.PRIMARY, formatRC(balance), interaction.guild)
-    .setTitle('Recent Transactions')
-    .setDescription(lines.join('\n').slice(0, 4000));
+  const lines = txs.map((t) => {
+    const credit = !String(t.amount).trim().startsWith('-');
+    const arrow = credit ? '🟢 ▲' : '🔴 ▼';
+    return `${arrow} \`${t.timestamp.toISOString().slice(0, 10)}\` **${t.type}**  ${t.amount} RC  →  ${t.balance_after} RC\n┕ *${t.reason}*`;
+  });
+  const embed = baseEmbed(COLOR.INFO, formatRC(balance), interaction.guild)
+    .setTitle('☰  Recent Transactions')
+    .setDescription(`${DIVIDER}\n${lines.join('\n').slice(0, 3900)}`);
   await ephemeralEmbed(interaction, embed);
 }
 
@@ -298,18 +325,20 @@ export async function handleLeaderboard(
     await ephemeralReply(interaction, 'No balances yet.');
     return;
   }
+  const topBalance = Number(rows[0]?.balance ?? 0) || 1;
   const lines = await Promise.all(
     rows.map(async (r, i) => {
       const user = await interaction.client.users.fetch(r.user_id).catch(() => null);
       const name = user?.username ?? r.user_id;
-      const medal = i === 0 ? '#1' : i === 1 ? '#2' : i === 2 ? '#3' : `#${i + 1}`;
-      return `**${medal}** ${name} — **${r.balance} RC**`;
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `\`#${i + 1}\``;
+      const bar = progressBar(Number(r.balance), topBalance, 8);
+      return `${medal}  **${name}**\n┕ ${bar}  **${r.balance} RC**`;
     })
   );
   const balance = await services.economy.getBalance(interaction.user.id);
   const embed = baseEmbed(COLOR.JACKPOT, formatRC(balance), interaction.guild)
-    .setTitle('Route Cash Leaderboard')
-    .setDescription(lines.join('\n').slice(0, 4000));
+    .setTitle('♔  Route Cash Leaderboard')
+    .setDescription(`Top ${rows.length} richest riders\n${DIVIDER}\n${lines.join('\n').slice(0, 3800)}`);
   await ephemeralEmbed(interaction, embed);
 }
 
@@ -321,18 +350,18 @@ export async function handleInventory(
   const items = await services.user.getInventory(interaction.user.id);
   const balance = await services.economy.getBalance(interaction.user.id);
   if (items.length === 0) {
-    const embed = baseEmbed(COLOR.PRIMARY, formatRC(balance), interaction.guild)
-      .setTitle('Inventory')
-      .setDescription('Your inventory is empty.');
+    const embed = baseEmbed(COLOR.INFO, formatRC(balance), interaction.guild)
+      .setTitle('🎒  Inventory')
+      .setDescription(`${DIVIDER}\nYour stash is empty. Open a crate with \`/crate\` to start collecting loot.`);
     await ephemeralEmbed(interaction, embed);
     return;
   }
   const lines = items.map((item) => {
-    const meta = item.item_metadata ? ` (${JSON.stringify(item.item_metadata)})` : '';
-    return `• **${item.item_type.replace(/_/g, ' ')}** x${item.quantity}${meta}`;
+    const meta = item.item_metadata ? ` \`${JSON.stringify(item.item_metadata)}\`` : '';
+    return `◈  **${item.item_type.replace(/_/g, ' ')}**  ×${item.quantity}${meta}`;
   });
-  const embed = baseEmbed(COLOR.PRIMARY, formatRC(balance), interaction.guild)
-    .setTitle('Your Inventory')
-    .setDescription(lines.join('\n').slice(0, 4000));
+  const embed = baseEmbed(COLOR.RARE, formatRC(balance), interaction.guild)
+    .setTitle('🎒  Your Inventory')
+    .setDescription(`${DIVIDER}\n${lines.join('\n').slice(0, 3900)}`);
   await ephemeralEmbed(interaction, embed);
 }

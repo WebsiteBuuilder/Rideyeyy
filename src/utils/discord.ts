@@ -15,27 +15,76 @@ import { config } from '../config';
 import { CONFIRM_TIMEOUT_MS } from './constants';
 
 // ---------------------------------------------------------------------------
-// Embed color palette (matches spec)
+// Brand identity
 // ---------------------------------------------------------------------------
-export const COLOR = {
-  PRIMARY: 0x00e5a0,   // mint — neutral/info
-  ERROR: 0xef4444,     // red — errors
-  WIN: 0x10b981,       // green — wins/success
-  JACKPOT: 0xf59e0b,   // gold — milestone/jackpot
-  RARE: 0x7c3aed,      // purple — rare/premium
+export const BRAND = {
+  name: 'Guhd Rides',
+  currency: 'Route Cash',
+  ticker: 'RC',
+  // Branded author label shown at the top of every embed
+  author: 'Guhd Rides  •  Route Cash',
 } as const;
 
-/** Build a base embed pre-populated with footer (RC balance + Guhd Rides label), timestamp, and color. */
+// ---------------------------------------------------------------------------
+// Unified, bold color palette
+// ---------------------------------------------------------------------------
+export const COLOR = {
+  PRIMARY: 0x00e5a0,   // mint — brand / neutral info
+  INFO: 0x38bdf8,      // sky — informational panels
+  ERROR: 0xff4d4d,     // red — errors / losses
+  WIN: 0x22e07a,       // bright green — wins / success
+  JACKPOT: 0xffc233,   // gold — milestones / jackpots
+  RARE: 0xb15cff,      // purple — rare / premium loot
+} as const;
+
+// ---------------------------------------------------------------------------
+// Visual meters & game-y formatting helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Render a unicode progress / meter bar, e.g. `▰▰▰▰▰▰▱▱▱▱`.
+ * Renders consistently in the Discord client across desktop & mobile.
+ */
+export function progressBar(value: number, max: number, size = 10): string {
+  const ratio = max <= 0 ? 0 : Math.max(0, Math.min(1, value / max));
+  const filled = Math.round(ratio * size);
+  return '▰'.repeat(filled) + '▱'.repeat(Math.max(0, size - filled));
+}
+
+/** A meter bar with a trailing `current / max` label. */
+export function meter(value: number, max: number, size = 10): string {
+  return `${progressBar(value, max, size)}  \`${value}/${max}\``;
+}
+
+/** Format a signed net result with a directional arrow, e.g. `▲ +120.00 RC`. */
+export function netLabel(net: string, positive: boolean): string {
+  const arrow = positive ? '▲' : '▼';
+  const sign = positive && !net.startsWith('+') ? '+' : '';
+  return `${arrow} ${sign}${net}`;
+}
+
+/** A thin divider line for separating embed sections. */
+export const DIVIDER = '━━━━━━━━━━━━━━━━━━━━━━';
+
+/**
+ * Build a base embed pre-populated with a branded author line, footer
+ * (current balance), timestamp, and color.
+ */
 export function baseEmbed(
   color: number,
   balance: string,
   guild?: Guild | null
 ): EmbedBuilder {
-  const iconURL = guild?.iconURL() ?? undefined;
+  const iconURL = guild?.iconURL({ size: 128 }) ?? undefined;
+  const hasBalance = balance && balance !== '—';
   return new EmbedBuilder()
     .setColor(color)
     .setTimestamp()
-    .setFooter({ text: `RC Balance: ${balance} RC  •  Guhd Rides`, iconURL });
+    .setAuthor({ name: BRAND.author, iconURL })
+    .setFooter({
+      text: hasBalance ? `Balance: ${balance}  •  ${BRAND.name}` : BRAND.name,
+      iconURL,
+    });
 }
 
 /** Reply ephemerally with a pre-built embed. */

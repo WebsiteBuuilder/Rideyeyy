@@ -10,6 +10,7 @@ import {
   baseEmbed,
   ephemeralEmbed,
   COLOR,
+  DIVIDER,
 } from '../utils/discord';
 
 export const data = new SlashCommandBuilder()
@@ -169,8 +170,8 @@ async function handleSnapshot(
 ): Promise<void> {
   const id = await services.backup.takeEconomySnapshot({ triggeredBy: interaction.user.id });
   const embed = baseEmbed(COLOR.WIN, '—', interaction.guild)
-    .setTitle('Snapshot Created')
-    .setDescription(`Economy snapshot created: \`${id}\``);
+    .setTitle('✓  Snapshot Created')
+    .setDescription(`${DIVIDER}\nEconomy backed up\n\n\`${id}\``);
   await ephemeralEmbed(interaction, embed);
 }
 
@@ -248,12 +249,10 @@ async function handleBalance(
   if (action === 'view') {
     await services.user.ensureUser(user.id);
     const balance = await services.economy.getBalance(user.id);
-    const embed = baseEmbed(COLOR.PRIMARY, formatRC(balance), interaction.guild)
-      .setTitle('User Balance')
-      .addFields(
-        { name: 'User', value: `<@${user.id}>`, inline: true },
-        { name: 'Balance', value: formatRC(balance), inline: true }
-      );
+    const embed = baseEmbed(COLOR.INFO, formatRC(balance), interaction.guild)
+      .setTitle('◈  User Balance')
+      .setDescription(`${DIVIDER}\n## ${formatRC(balance)}`)
+      .addFields({ name: '👤 User', value: `<@${user.id}>`, inline: true });
     await ephemeralEmbed(interaction, embed);
     return;
   }
@@ -282,11 +281,11 @@ async function handleBalance(
     await services.economy.adminAddBalance(user.id, amount, reason, interaction.user.id);
     const newBal = await services.economy.getBalance(user.id);
     const embed = baseEmbed(COLOR.WIN, formatRC(newBal), interaction.guild)
-      .setTitle('Balance Added')
+      .setTitle('▲  Balance Added')
+      .setDescription(`${DIVIDER}\n+${formatRC(amount)}`)
       .addFields(
-        { name: 'User', value: `<@${user.id}>`, inline: true },
-        { name: 'Added', value: formatRC(amount), inline: true },
-        { name: 'New Balance', value: formatRC(newBal), inline: true }
+        { name: '👤 User', value: `<@${user.id}>`, inline: true },
+        { name: '◈ New Balance', value: formatRC(newBal), inline: true }
       );
     await ephemeralEmbed(interaction, embed);
     return;
@@ -298,11 +297,11 @@ async function handleBalance(
       await services.economy.adminRemoveBalance(user.id, amount, reason, interaction.user.id);
       const newBal = await services.economy.getBalance(user.id);
       const embed = baseEmbed(COLOR.ERROR, formatRC(newBal), interaction.guild)
-        .setTitle('Balance Removed')
+        .setTitle('▼  Balance Removed')
+        .setDescription(`${DIVIDER}\n-${formatRC(amount)}`)
         .addFields(
-          { name: 'User', value: `<@${user.id}>`, inline: true },
-          { name: 'Removed', value: formatRC(amount), inline: true },
-          { name: 'New Balance', value: formatRC(newBal), inline: true }
+          { name: '👤 User', value: `<@${user.id}>`, inline: true },
+          { name: '◈ New Balance', value: formatRC(newBal), inline: true }
         );
       await ephemeralEmbed(interaction, embed);
     } catch (err) {
@@ -350,11 +349,12 @@ async function handleSend(
   }
 
   const embed = baseEmbed(COLOR.WIN, '—', interaction.guild)
-    .setTitle('Bulk Send Complete')
+    .setTitle('✓  Bulk Send Complete')
+    .setDescription(`${DIVIDER}\n${formatRC(amount)} to ${succeeded} users`)
     .addFields(
-      { name: 'Amount Each', value: formatRC(amount), inline: true },
-      { name: 'Succeeded', value: String(succeeded), inline: true },
-      { name: 'Failed', value: String(failed), inline: true }
+      { name: '✦ Per User', value: formatRC(amount), inline: true },
+      { name: '✓ Succeeded', value: String(succeeded), inline: true },
+      { name: '✕ Failed', value: String(failed), inline: true }
     );
   await ephemeralEmbed(interaction, embed);
 }
@@ -369,11 +369,9 @@ async function handleFreeze(
   await services.economy.freezeUser(user.id, interaction.user.id, reason);
 
   const embed = baseEmbed(COLOR.ERROR, '—', interaction.guild)
-    .setTitle('Account Frozen')
-    .addFields(
-      { name: 'User', value: `<@${user.id}>`, inline: true },
-      { name: 'Reason', value: reason, inline: false }
-    );
+    .setTitle('🔒  Account Frozen')
+    .setDescription(`${DIVIDER}\n${reason}`)
+    .addFields({ name: '👤 User', value: `<@${user.id}>`, inline: true });
   await ephemeralEmbed(interaction, embed);
 }
 
@@ -385,8 +383,8 @@ async function handleUnfreeze(
   await services.economy.unfreezeUser(user.id, interaction.user.id);
 
   const embed = baseEmbed(COLOR.WIN, '—', interaction.guild)
-    .setTitle('Account Unfrozen')
-    .setDescription(`<@${user.id}>'s account has been unfrozen.`);
+    .setTitle('🔓  Account Unfrozen')
+    .setDescription(`${DIVIDER}\n<@${user.id}>'s account is now active.`);
   await ephemeralEmbed(interaction, embed);
 }
 
@@ -405,7 +403,7 @@ async function handleRedeemClear(
     interaction.user.id
   );
   const embed = baseEmbed(COLOR.WIN, '—', interaction.guild)
-    .setTitle('Redemption Cleared')
-    .setDescription(`Cleared pending redemption for <@${user.id}>.`);
+    .setTitle('✓  Redemption Cleared')
+    .setDescription(`${DIVIDER}\nPending redemption cleared for <@${user.id}>.`);
   await ephemeralEmbed(interaction, embed);
 }

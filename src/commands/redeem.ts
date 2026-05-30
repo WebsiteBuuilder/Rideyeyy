@@ -6,7 +6,7 @@ import {
 import type { AppServices, RedeemOption } from '../types';
 import { InsufficientFundsError } from '../services/EconomyService';
 import { formatRC } from '../utils/math';
-import { ephemeralReply, memberFromInteraction, baseEmbed, ephemeralEmbed, COLOR } from '../utils/discord';
+import { ephemeralReply, memberFromInteraction, baseEmbed, ephemeralEmbed, COLOR, DIVIDER } from '../utils/discord';
 
 // ---------------------------------------------------------------------------
 // Redemption display metadata
@@ -66,14 +66,14 @@ export async function execute(
     const embed = baseEmbed(COLOR.WIN, formatRC(balance), interaction.guild)
       .setTitle(`${meta.icon}  Redemption Successful!`)
       .setDescription(
-        `Your nickname has been updated to reflect your redemption.\n\n` +
-        `> **${result.taggedNickname}**` +
+        `## ${meta.label}\n${DIVIDER}\n` +
+        `Your nickname now shows your redemption:\n> **${result.taggedNickname}**` +
         (result.truncated ? '\n\n*Note: Nickname was trimmed to fit Discord\'s 32-character limit.*' : '')
       )
       .addFields(
-        { name: 'Redeemed',     value: meta.label,          inline: true },
-        { name: 'RC Spent',     value: formatRC(meta.rc),   inline: true },
-        { name: 'New Balance',  value: formatRC(balance),   inline: true }
+        { name: '🎟 Redeemed',    value: meta.label,        inline: true },
+        { name: '✦ RC Spent',    value: formatRC(meta.rc), inline: true },
+        { name: '◈ New Balance', value: formatRC(balance), inline: true }
       );
 
     await ephemeralEmbed(interaction, embed);
@@ -84,14 +84,14 @@ export async function execute(
 
       const errorEmbed = new EmbedBuilder()
         .setColor(COLOR.ERROR)
-        .setTitle('Not Enough Route Cash')
+        .setTitle('✕  Not Enough Route Cash')
         .setDescription(
-          `You need **${formatRC(meta.rc)}** to redeem **${meta.label}**.` +
-          (balance !== null && needed > 0 ? `\nYou are short **${needed} RC** — keep earning!` : '')
+          `You need **${formatRC(meta.rc)}** to redeem **${meta.label}**.\n${DIVIDER}\n` +
+          (balance !== null && needed > 0 ? `Short by **${needed} RC** — keep earning!` : '')
         )
         .addFields(
-          { name: 'Required', value: formatRC(meta.rc),      inline: true },
-          ...(balance !== null ? [{ name: 'Your Balance', value: formatRC(balance), inline: true }] : [])
+          { name: '✦ Required', value: formatRC(meta.rc),      inline: true },
+          ...(balance !== null ? [{ name: '◈ Your Balance', value: formatRC(balance), inline: true }] : [])
         )
         .setFooter({ text: 'Guhd Rides' })
         .setTimestamp();

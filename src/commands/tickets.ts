@@ -12,6 +12,7 @@ import {
   baseEmbed,
   ephemeralEmbed,
   COLOR,
+  DIVIDER,
 } from '../utils/discord';
 
 export const bookData = new SlashCommandBuilder()
@@ -67,18 +68,18 @@ export async function handleBook(
     const embed = baseEmbed(COLOR.WIN, '—', interaction.guild)
       .setTitle('🎫  Booking Ticket Created')
       .setDescription(
-        `Your private booking channel is ready. A staff member will be with you shortly.\n\n` +
-        `> <#${channelId}>`
+        `Your private booking channel is open.\n${DIVIDER}\n` +
+        `A staff member will meet you here shortly.\n\n> <#${channelId}>`
       )
-      .addFields({ name: 'Ticket ID', value: `\`${ticketId}\``, inline: true })
+      .addFields({ name: '◈ Ticket ID', value: `\`${ticketId}\``, inline: true })
       .setThumbnail(interaction.user.displayAvatarURL());
 
     await ephemeralEmbed(interaction, embed);
   } catch (err) {
     const errEmbed = new EmbedBuilder()
       .setColor(COLOR.ERROR)
-      .setTitle('Failed to Create Ticket')
-      .setDescription(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      .setTitle('✕  Failed to Create Ticket')
+      .setDescription(`${DIVIDER}\n${err instanceof Error ? err.message : 'Something went wrong. Please try again.'}`)
       .setFooter({ text: 'Guhd Rides' })
       .setTimestamp();
     await ephemeralEmbed(interaction, errEmbed);
@@ -108,7 +109,7 @@ export async function handleTicket(
       await services.ticket.closeTicket(interaction.client, channelId, reason);
       const embed = baseEmbed(COLOR.ERROR, '—', interaction.guild)
         .setTitle('🔒  Ticket Closed')
-        .addFields({ name: 'Reason', value: reason, inline: false });
+        .setDescription(`${DIVIDER}\n${reason}`);
       await ephemeralEmbed(interaction, embed);
       break;
     }
@@ -116,17 +117,18 @@ export async function handleTicket(
       const staff = interaction.options.getUser('staff', true);
       await services.ticket.assignTicket(channelId, staff.id);
       const embed = baseEmbed(COLOR.PRIMARY, '—', interaction.guild)
-        .setTitle('👤  Ticket Assigned')
-        .addFields({ name: 'Staff', value: `<@${staff.id}>`, inline: true });
+        .setTitle('👤  Assigned')
+        .setDescription(`${DIVIDER}\nStaff: <@${staff.id}>`)
+        .addFields({ name: '✦ Handler', value: `<@${staff.id}>`, inline: true });
       await ephemeralEmbed(interaction, embed);
       break;
     }
     case 'add_note': {
       const text = interaction.options.getString('text', true);
       await services.ticket.addNote(channelId, text);
-      const embed = baseEmbed(COLOR.PRIMARY, '—', interaction.guild)
+      const embed = baseEmbed(COLOR.INFO, '—', interaction.guild)
         .setTitle('📝  Note Added')
-        .setDescription(text);
+        .setDescription(`${DIVIDER}\n*${text}*`);
       await ephemeralEmbed(interaction, embed);
       break;
     }
@@ -134,7 +136,7 @@ export async function handleTicket(
       await services.ticket.reopenTicket(interaction.client, channelId);
       const embed = baseEmbed(COLOR.WIN, '—', interaction.guild)
         .setTitle('🔓  Ticket Reopened')
-        .setDescription('This ticket has been reopened. Staff have been notified.');
+        .setDescription(`${DIVIDER}\nThis ticket is open. Staff have been notified.`);
       await ephemeralEmbed(interaction, embed);
       break;
     }

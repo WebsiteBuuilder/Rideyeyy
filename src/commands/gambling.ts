@@ -11,7 +11,7 @@ import Decimal from 'decimal.js';
 import type { AppServices, Card } from '../types';
 import { InsufficientFundsError } from '../services/EconomyService';
 import { parseAmount, formatRC } from '../utils/math';
-import { ephemeralReply, checkCooldown, baseEmbed, COLOR } from '../utils/discord';
+import { ephemeralReply, checkCooldown, baseEmbed, COLOR, netLabel, DIVIDER } from '../utils/discord';
 import { config } from '../config';
 
 // ---------------------------------------------------------------------------
@@ -19,23 +19,30 @@ import { config } from '../config';
 // ---------------------------------------------------------------------------
 
 const SUIT_ICON: Record<string, string> = { H: '♥', D: '♦', C: '♣', S: '♠' };
-const DICE_FACE = ['', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣'];
+const DICE_FACE = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 
 function cardLabel(card: Card): string {
   return `${card.rank}${SUIT_ICON[card.suit] ?? card.suit}`;
 }
 
+/** Render a single card as a boxed "tile" for a tactile, table-like feel. */
+function cardTile(card: Card): string {
+  return `\`[ ${cardLabel(card)} ]\``;
+}
+
+const HIDDEN_TILE = '`[ ?? ]`';
+
 function renderHand(hand: Card[], hideSecond = false): string {
   return hand
-    .map((c, i) => (hideSecond && i === 1 ? '`▓▓`' : `\`${cardLabel(c)}\``))
-    .join('  ');
+    .map((c, i) => (hideSecond && i === 1 ? HIDDEN_TILE : cardTile(c)))
+    .join(' ');
 }
 
 function valueLabel(v: number, show: boolean): string {
-  if (!show) return '`?`';
-  if (v === 21) return `**21** ✨`;
-  if (v > 21)  return `**${v}** (BUST)`;
-  return `**${v}**`;
+  if (!show) return '`• ?`';
+  if (v === 21) return `✦ **21** — Blackjack!`;
+  if (v > 21)  return `💥 **${v}** — BUST`;
+  return `• **${v}**`;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,14 +50,14 @@ function valueLabel(v: number, show: boolean): string {
 // ---------------------------------------------------------------------------
 
 const BJ_META: Record<string, { color: number; title: string }> = {
-  blackjack:  { color: COLOR.JACKPOT, title: '🃏  BLACKJACK — Natural 21!' },
-  win:        { color: COLOR.WIN,     title: '✅  Blackjack — You Win!'     },
-  push:       { color: COLOR.PRIMARY, title: '🤝  Blackjack — Push'         },
-  loss:       { color: COLOR.ERROR,   title: '❌  Blackjack — Dealer Wins'  },
-  bust:       { color: COLOR.ERROR,   title: '💥  Blackjack — Bust!'        },
-  surrender:  { color: COLOR.PRIMARY, title: '🏳️  Blackjack — Surrendered'  },
-  timed_out:  { color: COLOR.ERROR,   title: '⏰  Blackjack — Timed Out'    },
-  player_turn:{ color: 0x5865f2,      title: '🃏  Blackjack'                },
+  blackjack:  { color: COLOR.JACKPOT, title: '✦  BLACKJACK — Natural 21!' },
+  win:        { color: COLOR.WIN,     title: '✦  BLACKJACK — You Win!'     },
+  push:       { color: COLOR.INFO,    title: '◆  BLACKJACK — Push'         },
+  loss:       { color: COLOR.ERROR,   title: '✕  BLACKJACK — Dealer Wins'  },
+  bust:       { color: COLOR.ERROR,   title: '💥  BLACKJACK — Bust!'       },
+  surrender:  { color: COLOR.INFO,    title: '🏳  BLACKJACK — Surrendered' },
+  timed_out:  { color: COLOR.ERROR,   title: '⏱  BLACKJACK — Timed Out'    },
+  player_turn:{ color: 0x5865f2,      title: '♠  BLACKJACK'                },
 };
 
 // ---------------------------------------------------------------------------
@@ -74,15 +81,17 @@ function buildBlackjackEmbed(
 
   const embed = new EmbedBuilder()
     .setColor(meta.color)
+    .setAuthor({ name: 'Guhd Rides  •  Blackjack' })
     .setTitle(meta.title)
+    .setDescription(DIVIDER)
     .addFields(
       {
-        name: 'Your Hand',
+        name: '♦ Your Hand',
         value: `${renderHand(playerHand)}\n${valueLabel(playerValue, true)}`,
         inline: true,
       },
       {
-        name: 'Dealer',
+        name: '♠ Dealer',
         value: `${renderHand(dealerHand, !showDealer)}\n${valueLabel(dealerValue, showDealer)}`,
         inline: true,
       }
@@ -91,11 +100,14 @@ function buildBlackjackEmbed(
     .setTimestamp();
 
   if (showDealer && extras?.payout !== undefined) {
+    const won = extras.payout.gt(bet);
+    const net = won ? extras.payout.sub(bet) : bet.sub(extras.payout);
     embed.addFields(
-      { name: '\u200b', value: '\u200b', inline: false },
-      { name: 'Payout',      value: formatRC(extras.payout),      inline: true },
+      { name: '\u200b', value: DIVIDER, inline: false },
+      { name: '✦ Payout', value: `**${formatRC(extras.payout)}**`, inline: true },
+      { name: won ? '▲ Net' : '▼ Net', value: netLabel(formatRC(net), won), inline: true },
       ...(extras.newBalance !== undefined
-        ? [{ name: 'New Balance', value: formatRC(extras.newBalance), inline: true }]
+        ? [{ name: '◈ Balance', value: formatRC(extras.newBalance), inline: true }]
         : [])
     );
   }
@@ -199,15 +211,16 @@ export async function handleCoinflip(
     const choiceIcon = choice === 'heads' ? '🟡' : '⚪';
 
     const embed = baseEmbed(result.won ? COLOR.WIN : COLOR.ERROR, formatRC(balance), interaction.guild)
-      .setTitle(result.won ? '🟡  Coinflip — You Win!' : '⚪  Coinflip — You Lose')
+      .setAuthor({ name: 'Guhd Rides  •  Coinflip' })
+      .setTitle(result.won ? '✦  COINFLIP — WIN!' : '✕  COINFLIP — LOSS')
       .setDescription(
-        `**${interaction.user.username}** bet **${formatRC(amount)}** on **${choice}** ${choiceIcon}\n\n` +
-        `> The coin landed on ${coinIcon} **${result.outcome}**`
+        `## ${coinIcon}  ${result.outcome.toUpperCase()}\n${DIVIDER}\n` +
+        `You called ${choiceIcon} **${choice}** for **${formatRC(amount)}**`
       )
       .addFields(
-        { name: 'Payout',      value: formatRC(result.payout), inline: true },
-        { name: 'Net',         value: (result.won ? '+' : '') + formatRC(result.net), inline: true },
-        { name: 'New Balance', value: formatRC(balance),        inline: true }
+        { name: '✦ Payout',  value: `**${formatRC(result.payout)}**`, inline: true },
+        { name: result.won ? '▲ Net' : '▼ Net', value: netLabel(formatRC(result.net), result.won), inline: true },
+        { name: '◈ Balance', value: formatRC(balance), inline: true }
       );
 
     await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -245,23 +258,25 @@ export async function handleDice(
     const isAdjacent = !isExact && result.net.gt(0);
     const color      = isExact ? COLOR.JACKPOT : isAdjacent ? COLOR.WIN : COLOR.ERROR;
 
-    const rolledFace = DICE_FACE[result.roll] ?? `**${result.roll}**`;
-    const targetFace = DICE_FACE[target]       ?? `**${target}**`;
+    const rolledFace = DICE_FACE[result.roll] ?? `${result.roll}`;
+    const targetFace = DICE_FACE[target]       ?? `${target}`;
+    const won = result.net.gt(0);
 
     const embed = baseEmbed(color, formatRC(balance), interaction.guild)
+      .setAuthor({ name: 'Guhd Rides  •  Dice' })
       .setTitle(
-        isExact    ? '🎯  Dice — Exact Hit!'
-        : isAdjacent ? '🎲  Dice — Close!'
-                     : '🎲  Dice — Miss'
+        isExact    ? '✦  DICE — EXACT HIT!'
+        : isAdjacent ? '◆  DICE — CLOSE!'
+                     : '✕  DICE — MISS'
       )
       .setDescription(
-        `**${interaction.user.username}** bet **${formatRC(amount)}** on ${targetFace} **${target}**\n\n` +
-        `> Rolled ${rolledFace} — ${result.description}`
+        `## ${rolledFace}  →  ${result.roll}\n${DIVIDER}\n` +
+        `Target ${targetFace} **${target}** for **${formatRC(amount)}**\n*${result.description}*`
       )
       .addFields(
-        { name: 'Payout',      value: formatRC(result.payout), inline: true },
-        { name: 'Net',         value: formatRC(result.net),    inline: true },
-        { name: 'New Balance', value: formatRC(balance),       inline: true }
+        { name: '✦ Payout',  value: `**${formatRC(result.payout)}**`, inline: true },
+        { name: won ? '▲ Net' : '▼ Net', value: netLabel(formatRC(result.net), won), inline: true },
+        { name: '◈ Balance', value: formatRC(balance), inline: true }
       );
 
     await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -379,13 +394,14 @@ export async function handleBlackjackButton(
       const bet     = new Decimal(game?.bet_amount ?? 0);
 
       const embed = new EmbedBuilder()
-        .setColor(COLOR.PRIMARY)
-        .setTitle('🏳️  Blackjack — Surrendered')
-        .setDescription('You surrendered. Half your bet has been returned.')
+        .setColor(COLOR.INFO)
+        .setAuthor({ name: 'Guhd Rides  •  Blackjack' })
+        .setTitle('🏳  Blackjack — Surrendered')
+        .setDescription(`You folded early — half your bet is back.\n${DIVIDER}`)
         .addFields(
-          { name: 'Bet',         value: formatRC(bet),     inline: true },
-          { name: 'Returned',    value: formatRC(bet.div(2)), inline: true },
-          { name: 'New Balance', value: formatRC(balance), inline: true }
+          { name: '✦ Bet',      value: formatRC(bet),        inline: true },
+          { name: '↩ Returned', value: formatRC(bet.div(2)), inline: true },
+          { name: '◈ Balance',  value: formatRC(balance),    inline: true }
         )
         .setFooter({ text: 'Guhd Rides' })
         .setTimestamp();

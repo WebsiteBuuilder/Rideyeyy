@@ -10,7 +10,7 @@ import {
 import type { AppServices, CrateType } from '../types';
 import { InsufficientFundsError } from '../services/EconomyService';
 import { formatRC } from '../utils/math';
-import { ephemeralReply, checkCooldown, COLOR } from '../utils/discord';
+import { ephemeralReply, checkCooldown, COLOR, DIVIDER } from '../utils/discord';
 import { config } from '../config';
 
 // ---------------------------------------------------------------------------
@@ -68,17 +68,19 @@ function formatRewardLine(description: string): string {
 function buildShopEmbed(): EmbedBuilder {
   const lines = (['bronze', 'silver', 'gold'] as CrateType[]).map((t) => {
     const m = CRATE_META[t];
-    return `${m.icon}  **${m.label}** — \`${formatRC(m.cost)}\`\n${m.desc}`;
+    return `${m.icon}  **${m.label}**  ·  \`${formatRC(m.cost)}\`\n┕ *${m.desc}*`;
   });
 
   return new EmbedBuilder()
     .setColor(COLOR.JACKPOT)
-    .setTitle('Route Cash Crates')
+    .setAuthor({ name: 'Guhd Rides  •  Crates' })
+    .setTitle('▣  Route Cash Crates')
     .setDescription(
-      'Spend your RC to open a crate and win rewards, roles, and ride credits.\n\n' +
+      'Spend RC to crack open a crate for rewards, roles, and ride credits.\n' +
+      `${DIVIDER}\n` +
       lines.join('\n\n')
     )
-    .setFooter({ text: 'Select a crate below  •  Guhd Rides' })
+    .setFooter({ text: 'Pick a crate below  •  Guhd Rides' })
     .setTimestamp();
 }
 
@@ -145,9 +147,10 @@ export async function handleCrateButton(
   if (action === 'rewards') {
     const summary = await services.crate.getAllRewardsSummary();
     const embed = new EmbedBuilder()
-      .setColor(COLOR.JACKPOT)
-      .setTitle('📋  Crate Rewards Overview')
-      .setDescription(summary.slice(0, 4000))
+      .setColor(COLOR.RARE)
+      .setAuthor({ name: 'Guhd Rides  •  Crates' })
+      .setTitle('☰  Crate Rewards Overview')
+      .setDescription(`${DIVIDER}\n${summary.slice(0, 3900)}`)
       .setFooter({ text: 'Guhd Rides' })
       .setTimestamp();
     await interaction.update({ embeds: [embed], components: [buildCrateButtons()] });
@@ -187,12 +190,14 @@ export async function handleCrateButton(
 
     const embed = new EmbedBuilder()
       .setColor(embedColor)
-      .setTitle(`${meta.icon}  ${meta.label} Opened!`)
+      .setAuthor({ name: 'Guhd Rides  •  Crates' })
+      .setTitle(`${meta.icon}  ${meta.label} Opened!${hasRare ? '  ✦ RARE!' : ''}`)
       .setDescription(
-        `**${interaction.user.username}** cracked open a ${meta.label}.\n\n` +
+        `**${interaction.user.username}** cracked open a ${meta.label}\n${DIVIDER}\n` +
+        '**You won:**\n' +
         rewardLines.join('\n')
       )
-      .addFields({ name: 'New Balance', value: formatRC(balance), inline: true })
+      .addFields({ name: '◈ New Balance', value: formatRC(balance), inline: true })
       .setFooter({ text: `Cost: ${formatRC(meta.cost)}  •  Guhd Rides` })
       .setTimestamp();
 
@@ -204,10 +209,11 @@ export async function handleCrateButton(
         embeds: [
           new EmbedBuilder()
             .setColor(COLOR.ERROR)
-            .setTitle('Not Enough Route Cash')
+            .setAuthor({ name: 'Guhd Rides  •  Crates' })
+            .setTitle('✕  Not Enough Route Cash')
             .setDescription(
-              `You need **${formatRC(meta.cost)}** to open a ${meta.label}.\n` +
-              (needed > 0 ? `You're short **${needed} RC** — keep earning!` : '')
+              `You need **${formatRC(meta.cost)}** to open a ${meta.label}.\n${DIVIDER}\n` +
+              (needed > 0 ? `Short by **${needed} RC** — keep earning!` : '')
             )
             .setFooter({ text: 'Guhd Rides' })
             .setTimestamp(),
