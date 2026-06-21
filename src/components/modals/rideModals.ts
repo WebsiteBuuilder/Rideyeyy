@@ -1,5 +1,6 @@
 import {
   ActionRowBuilder,
+  ButtonBuilder,
   ModalSubmitInteraction,
   StringSelectMenuBuilder,
 } from 'discord.js';
@@ -17,8 +18,8 @@ export async function handlePickupModal(interaction: ModalSubmitInteraction): Pr
 
   // Step 3 — open dropoff modal is not possible to chain here in Discord.
   // We show an intermediate button that opens the next modal on click.
-  const { ActionRowBuilder: ARB, ButtonBuilder, ButtonStyle } = await import('discord.js');
-  const row = new ARB<ButtonBuilder>().addComponents(
+  const { ButtonStyle } = await import('discord.js');
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`ride:opendropoff:${userId}`)
       .setLabel('Continue — Enter Dropoff Location')
@@ -42,8 +43,8 @@ export async function handleDropoffModal(interaction: ModalSubmitInteraction): P
   state.dropoff = dropoff;
   wizardState.set(userId, state);
 
-  const { ActionRowBuilder: ARB, ButtonBuilder, ButtonStyle } = await import('discord.js');
-  const row = new ARB<ButtonBuilder>().addComponents(
+  const { ButtonStyle } = await import('discord.js');
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`ride:openfare:${userId}`)
       .setLabel('Continue — Enter Estimated Fare')
