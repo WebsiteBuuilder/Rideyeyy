@@ -46,7 +46,6 @@ function cardLabel(card: Card): string {
 
 /** Premium card tile with clean styling */
 function cardTile(card: Card): string {
-  const isRed = card.suit === 'H' || card.suit === 'D';
   return `\`[ ${cardLabel(card)} ]\``;
 }
 
@@ -269,47 +268,6 @@ export async function handleCoinflip(
   }
 }
 
-  try {
-    const amount = parseAmount(interaction.options.getString('amount', true));
-    const choice = interaction.options.getString('choice', true) as 'heads' | 'tails';
-    await services.user.ensureUser(interaction.user.id);
-    const result = await services.gambling.coinflip(interaction.user.id, amount, choice);
-    const balance = await services.economy.getBalance(interaction.user.id);
-
-    const won = result.won;
-    const coinIcon = result.outcome === 'heads' ? '🪙' : '⚪';
-    
-    const embed = new EmbedBuilder()
-      .setColor(won ? COLOR.WIN : COLOR.LOSS)
-      .setAuthor({ name: `${BRAND.icon}  ${BRAND.name}` })
-      .setTitle(won ? 'WINNER!' : 'LOSS')
-      .setDescription(
-        statusBanner(
-          won ? `${ICON.win}  YOU WIN  ${ICON.win}` : `${ICON.loss}  MISS  ${ICON.loss}`,
-          won ? 'win' : 'loss'
-        ) +
-        `\n## ${coinIcon} ${result.outcome.toUpperCase()}\n` +
-        `${LINE}\n` +
-        `You bet **${inlineRC(formatRC(amount))}** on **${choice.toUpperCase()}**`
-      )
-      .addFields(
-        { name: SPACER, value: statBlock('PAYOUT', `${ICON.coin} ${formatRC(result.payout)}`), inline: true },
-        { name: SPACER, value: statBlock(won ? 'PROFIT' : 'LOSS', won ? `\`+ ${formatRC(result.net)}\` ${ICON.up}` : `\`- ${formatRC(result.net)}\` ${ICON.down}`), inline: true },
-        { name: SPACER, value: statBlock('BALANCE', `${ICON.coin} ${formatRC(balance)}`), inline: true }
-      )
-      .setTimestamp()
-      .setFooter({ text: `${BRAND.name}  ·  ${BRAND.tagline}` });
-
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-  } catch (err) {
-    if (err instanceof InsufficientFundsError) {
-      await ephemeralReply(interaction, `${ICON.loss} Not enough Route Cash for that bet.`);
-      return;
-    }
-    throw err;
-  }
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 //  DICE — Target Number Game
 // ═══════════════════════════════════════════════════════════════════════════
@@ -368,50 +326,6 @@ export async function handleDice(
   }
 }
 
-  try {
-    const amount = parseAmount(interaction.options.getString('amount', true));
-    const target = interaction.options.getInteger('target', true);
-    await services.user.ensureUser(interaction.user.id);
-    const result = await services.gambling.dice(interaction.user.id, amount, target);
-    const balance = await services.economy.getBalance(interaction.user.id);
-
-    const isExact    = result.roll === target;
-    const isAdjacent = !isExact && result.net.gt(0);
-    const color      = isExact ? COLOR.JACKPOT : isAdjacent ? COLOR.WIN : COLOR.LOSS;
-    const won        = result.net.gt(0);
-
-    const rolledFace = DICE_FACE[result.roll] ?? `${result.roll}`;
-    const statusText = isExact ? `${ICON.jackpot}  JACKPOT  ${ICON.jackpot}` : isAdjacent ? `${ICON.win}  CLOSE  ${ICON.win}` : `${ICON.loss}  MISS  ${ICON.loss}`;
-    const style = isExact ? 'jackpot' : isAdjacent ? 'win' : 'loss';
-
-    const embed = new EmbedBuilder()
-      .setColor(color)
-      .setAuthor({ name: `${BRAND.icon}  ${BRAND.name}` })
-      .setTitle(isExact ? 'JACKPOT!' : isAdjacent ? 'CLOSE!' : 'MISS')
-      .setDescription(
-        statusBanner(statusText, style) +
-        `\n## ${rolledFace}  You rolled **${result.roll}**\n` +
-        `${LINE}\n` +
-        `Target: **${target}** for **${inlineRC(formatRC(amount))}**`
-      )
-      .addFields(
-        { name: SPACER, value: statBlock('PAYOUT', `${ICON.coin} ${formatRC(result.payout)}`), inline: true },
-        { name: SPACER, value: statBlock(won ? 'PROFIT' : 'LOSS', won ? `\`+ ${formatRC(result.net)}\` ${ICON.up}` : `\`- ${formatRC(result.net)}\` ${ICON.down}`), inline: true },
-        { name: SPACER, value: statBlock('BALANCE', `${ICON.coin} ${formatRC(balance)}`), inline: true }
-      )
-      .setTimestamp()
-      .setFooter({ text: `${BRAND.name}  ·  ${BRAND.tagline}` });
-
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-  } catch (err) {
-    if (err instanceof InsufficientFundsError) {
-      await ephemeralReply(interaction, `${ICON.loss} Not enough Route Cash for that bet.`);
-      return;
-    }
-    throw err;
-  }
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 //  BLACKJACK — Premium Card Game
 // ═══════════════════════════════════════════════════════════════════════════
@@ -454,7 +368,7 @@ export async function handleBlackjack(
   }
 }
 
-// ══════════════════��════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
 //  BLACKJACK BUTTON HANDLERS
 // ═══════════════════════════════════════════════════════════════════════════
 
