@@ -4,7 +4,7 @@ import {
   ButtonStyle,
   EmbedBuilder,
 } from 'discord.js';
-import type { RideRequest } from '@prisma/client';
+import type { RideRequest } from '../../types/ride';
 
 const STATUS_COLORS: Record<string, number> = {
   OPEN:      0x5865f2,
