@@ -7,14 +7,19 @@
     "node": ">=20 <21"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.bot.json",
+    "build": "prisma generate && tsc -p tsconfig.bot.json",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "@types/pg": "^8.20.0",
     "decimal.js": "^10.6.0",
     "discord.js": "^14.21.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "pg": "^8.22.0",
+    "prisma": "^7.8.0"
   },
   "devDependencies": {
     "@types/node": "^22.5.4",

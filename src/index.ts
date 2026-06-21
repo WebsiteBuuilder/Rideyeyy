@@ -1,17 +1,34 @@
-import { Client, GatewayIntentBits, REST, Routes, Events, Interaction, ButtonInteraction } from 'discord.js';
+import 'dotenv/config';
+import {
+  Client,
+  GatewayIntentBits,
+  REST,
+  Routes,
+  Events,
+  Interaction,
+  ButtonInteraction,
+  StringSelectMenuInteraction,
+  ModalSubmitInteraction,
+} from 'discord.js';
 import { config } from './config';
 import type { AppServices } from './types';
 
-// Services
-import { EconomyService } from './services/EconomyService';
-import { UserService }    from './services/UserService';
-import { CrateService }   from './services/CrateService';
+// ── Economy / Gambling / Crate services ──────────────────────────────────────
+import { EconomyService }  from './services/EconomyService';
+import { UserService }     from './services/UserService';
+import { CrateService }    from './services/CrateService';
 import { GamblingService } from './services/GamblingService';
 
-// Command handlers
+// ── Command handlers ──────────────────────────────────────────────────────────
 import * as Economy  from './commands/economy';
 import * as Crates   from './commands/crates';
 import * as Gambling from './commands/gambling';
+import * as Ride     from './commands/ride/ride';
+
+// ── Ride component handlers ───────────────────────────────────────────────────
+import { handleRideButton }                         from './components/buttons/rideButtons';
+import { handleStep1, handleStep5, handleStep6 }   from './components/selectMenus/rideSelectMenus';
+import { handlePickupModal, handleDropoffModal, handleFareModal } from './components/modals/rideModals';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
@@ -52,6 +69,7 @@ async function registerCommands(): Promise<void> {
     Gambling.coinflipData,
     Gambling.diceData,
     Gambling.blackjackData,
+    Ride.data,
   ].map((c) => c.toJSON());
 
   const rest = new REST().setToken(config.token);
@@ -72,14 +90,27 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     // ── Button interactions ──────────────────────────────────────────────
     if (interaction.isButton()) {
       const btn = interaction as ButtonInteraction;
-      if (btn.customId.startsWith('bj:')) {
-        await Gambling.handleBlackjackButton(btn, services);
-        return;
-      }
-      if (btn.customId.startsWith('crate:')) {
-        await Crates.handleCrateButton(btn, services);
-        return;
-      }
+      if (btn.customId.startsWith('bj:'))    { await Gambling.handleBlackjackButton(btn, services); return; }
+      if (btn.customId.startsWith('crate:')) { await Crates.handleCrateButton(btn, services);       return; }
+      if (btn.customId.startsWith('ride:'))  { await handleRideButton(btn);                         return; }
+      return;
+    }
+
+    // ── Select menu interactions ─────────────────────────────────────────
+    if (interaction.isStringSelectMenu()) {
+      const sel = interaction as StringSelectMenuInteraction;
+      if (sel.customId.startsWith('ride:step1:')) { await handleStep1(sel); return; }
+      if (sel.customId.startsWith('ride:step5:')) { await handleStep5(sel); return; }
+      if (sel.customId.startsWith('ride:step6:')) { await handleStep6(sel); return; }
+      return;
+    }
+
+    // ── Modal submissions ────────────────────────────────────────────────
+    if (interaction.isModalSubmit()) {
+      const mod = interaction as ModalSubmitInteraction;
+      if (mod.customId.startsWith('ride:modal:pickup:'))  { await handlePickupModal(mod);  return; }
+      if (mod.customId.startsWith('ride:modal:dropoff:')) { await handleDropoffModal(mod); return; }
+      if (mod.customId.startsWith('ride:modal:fare:'))    { await handleFareModal(mod);    return; }
       return;
     }
 
@@ -100,6 +131,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       case 'coinflip':     await Gambling.handleCoinflip(interaction, services);    break;
       case 'dice':         await Gambling.handleDice(interaction, services);        break;
       case 'blackjack':    await Gambling.handleBlackjack(interaction, services);   break;
+      case 'ride':         await Ride.execute(interaction);                         break;
       default:
         console.warn(`[Bot] Unknown command: ${interaction.commandName}`);
     }

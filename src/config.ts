@@ -45,3 +45,20 @@ export const config = {
     crateCooldownMs:   Number(process.env['CRATE_COOLDOWN_MS']   ?? 10_000),
   },
 } as const;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  RIDE SYSTEM CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const rideConfig = {
+  roles: {
+    provider:   process.env['PROVIDER_ROLE_ID']   ?? '0',
+    management: process.env['MANAGEMENT_ROLE_ID'] ?? '0',
+    admin:      process.env['ADMIN_ROLE_ID']       ?? '0',
+  },
+  channels: {
+    dispatch: process.env['DISPATCH_CHANNEL_ID'] ?? '',
+    logs:     process.env['RIDE_LOG_CHANNEL_ID'] ?? '',
+    vouches:  process.env['VOUCH_CHANNEL_ID']    ?? '',
+  },
+} as const;
