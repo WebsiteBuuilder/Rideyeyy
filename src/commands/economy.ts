@@ -21,6 +21,7 @@ import {
   ICON,
   BRAND,
   statBlock,
+  heroAmount,
 } from '../utils/discord';
 import { config } from '../config';
 import {
