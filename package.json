@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist/index.js",
   "engines": {
-    "node": ">=20 <21"
+    "node": ">=22"
   },
   "scripts": {
     "build": "prisma generate && tsc -p tsconfig.bot.json",
