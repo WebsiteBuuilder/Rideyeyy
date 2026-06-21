@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "build:bot": "tsc -p tsconfig.bot.json",
+    "start:bot": "node dist/index.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
