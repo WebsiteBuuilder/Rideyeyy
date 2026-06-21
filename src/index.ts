@@ -24,11 +24,17 @@ import * as Economy  from './commands/economy';
 import * as Crates   from './commands/crates';
 import * as Gambling from './commands/gambling';
 import * as Ride     from './commands/ride/ride';
+import * as Booking  from './commands/booking/book';
 
 // ── Ride component handlers ───────────────────────────────────────────────────
 import { handleRideButton }                         from './components/buttons/rideButtons';
 import { handleStep1, handleStep5, handleStep6 }   from './components/selectMenus/rideSelectMenus';
 import { handlePickupModal, handleDropoffModal, handleFareModal } from './components/modals/rideModals';
+
+// ── Booking component handlers ────────────────────────────────────────────────
+import { handleBookingButton }                                          from './components/buttons/bookingButtons';
+import { handleServiceSelect, handleDeliveryTimeSelect, handlePaymentMethodSelect } from './components/selectMenus/bookingSelectMenus';
+import { handleAmountModal, handleAddressModal }                        from './components/modals/bookingModals';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
@@ -70,6 +76,7 @@ async function registerCommands(): Promise<void> {
     Gambling.diceData,
     Gambling.blackjackData,
     Ride.data,
+    Booking.data,
   ].map((c) => c.toJSON());
 
   const rest = new REST().setToken(config.token);
@@ -93,15 +100,19 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       if (btn.customId.startsWith('bj:'))    { await Gambling.handleBlackjackButton(btn, services); return; }
       if (btn.customId.startsWith('crate:')) { await Crates.handleCrateButton(btn, services);       return; }
       if (btn.customId.startsWith('ride:'))  { await handleRideButton(btn);                         return; }
+      if (btn.customId.startsWith('book:'))  { await handleBookingButton(btn);                      return; }
       return;
     }
 
     // ── Select menu interactions ─────────────────────────────────────────
     if (interaction.isStringSelectMenu()) {
       const sel = interaction as StringSelectMenuInteraction;
-      if (sel.customId.startsWith('ride:step1:')) { await handleStep1(sel); return; }
-      if (sel.customId.startsWith('ride:step5:')) { await handleStep5(sel); return; }
-      if (sel.customId.startsWith('ride:step6:')) { await handleStep6(sel); return; }
+      if (sel.customId.startsWith('ride:step1:'))        { await handleStep1(sel); return; }
+      if (sel.customId.startsWith('ride:step5:'))        { await handleStep5(sel); return; }
+      if (sel.customId.startsWith('ride:step6:'))        { await handleStep6(sel); return; }
+      if (sel.customId.startsWith('book:service:'))      { await handleServiceSelect(sel); return; }
+      if (sel.customId.startsWith('book:deliverytime:')) { await handleDeliveryTimeSelect(sel); return; }
+      if (sel.customId.startsWith('book:payment:'))      { await handlePaymentMethodSelect(sel); return; }
       return;
     }
 
@@ -111,6 +122,8 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       if (mod.customId.startsWith('ride:modal:pickup:'))  { await handlePickupModal(mod);  return; }
       if (mod.customId.startsWith('ride:modal:dropoff:')) { await handleDropoffModal(mod); return; }
       if (mod.customId.startsWith('ride:modal:fare:'))    { await handleFareModal(mod);    return; }
+      if (mod.customId.startsWith('book:modal:amount:'))  { await handleAmountModal(mod);  return; }
+      if (mod.customId.startsWith('book:modal:address:')) { await handleAddressModal(mod); return; }
       return;
     }
 
@@ -132,6 +145,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       case 'dice':         await Gambling.handleDice(interaction, services);        break;
       case 'blackjack':    await Gambling.handleBlackjack(interaction, services);   break;
       case 'ride':         await Ride.execute(interaction);                         break;
+      case 'booking':      await Booking.execute(interaction);                      break;
       default:
         console.warn(`[Bot] Unknown command: ${interaction.commandName}`);
     }
