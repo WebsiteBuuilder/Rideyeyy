@@ -40,10 +40,17 @@ const EconomyService_1 = require("./services/EconomyService");
 const UserService_1 = require("./services/UserService");
 const CrateService_1 = require("./services/CrateService");
 const GamblingService_1 = require("./services/GamblingService");
+const BookingService_1 = require("./services/BookingService");
+const ProviderStatsService_1 = require("./services/ProviderStatsService");
+const BlacklistService_1 = require("./services/BlacklistService");
 // Command handlers
 const Economy = __importStar(require("./commands/economy"));
 const Crates = __importStar(require("./commands/crates"));
 const Gambling = __importStar(require("./commands/gambling"));
+const Book = __importStar(require("./commands/book"));
+const ProviderStats = __importStar(require("./commands/provider-stats"));
+const ProviderLeaderboard = __importStar(require("./commands/provider-leaderboard"));
+const Blacklist = __importStar(require("./commands/blacklist"));
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
 // ═══════════════════════════════════════════════════════════════════════════
@@ -52,6 +59,9 @@ const services = {
     user: new UserService_1.UserService(),
     crate: new CrateService_1.CrateService(),
     gambling: new GamblingService_1.GamblingService(),
+    booking: new BookingService_1.BookingService(),
+    providerStats: new ProviderStatsService_1.ProviderStatsService(),
+    blacklist: new BlacklistService_1.BlacklistService(),
 };
 const client = new discord_js_1.Client({
     intents: [
@@ -79,6 +89,10 @@ async function registerCommands() {
         Gambling.coinflipData,
         Gambling.diceData,
         Gambling.blackjackData,
+        Book.data,
+        ProviderStats.data,
+        ProviderLeaderboard.data,
+        Blacklist.data,
     ].map((c) => c.toJSON());
     const rest = new discord_js_1.REST().setToken(config_1.config.token);
     const route = config_1.config.guildId
@@ -95,12 +109,34 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
         // ── Button interactions ──────────────────────────────────────────────
         if (interaction.isButton()) {
             const btn = interaction;
-            if (btn.customId.startsWith('bj:')) {
+            const id = btn.customId;
+            if (id.startsWith('bj:')) {
                 await Gambling.handleBlackjackButton(btn, services);
                 return;
             }
-            if (btn.customId.startsWith('crate:')) {
+            if (id.startsWith('crate:')) {
                 await Crates.handleCrateButton(btn, services);
+                return;
+            }
+            if (id.startsWith('gudhrides-book:')) {
+                await Book.handleBookButton(btn, services);
+                return;
+            }
+            if (id.startsWith('gudhrides-booking:')) {
+                await Book.handleBookingActionButton(btn, services);
+                return;
+            }
+            if (id.startsWith('gudhrides-review:')) {
+                await Book.handleReviewButton(btn, services);
+                return;
+            }
+            return;
+        }
+        // ── Modal submissions ────────────────────────────────────────────────
+        if (interaction.isModalSubmit()) {
+            const modal = interaction;
+            if (modal.customId.startsWith('gudhrides-book-')) {
+                await Book.handleBookModal(modal, services);
                 return;
             }
             return;
@@ -147,6 +183,18 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
                 break;
             case 'blackjack':
                 await Gambling.handleBlackjack(interaction, services);
+                break;
+            case 'book':
+                await Book.execute(interaction, services);
+                break;
+            case 'provider-stats':
+                await ProviderStats.handleProviderStats(interaction, services);
+                break;
+            case 'provider-leaderboard':
+                await ProviderLeaderboard.handleProviderLeaderboard(interaction, services);
+                break;
+            case 'blacklist':
+                await Blacklist.handleBlacklist(interaction, services);
                 break;
             default:
                 console.warn(`[Bot] Unknown command: ${interaction.commandName}`);
