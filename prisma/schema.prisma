@@ -1,0 +1,120 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum BookingStatus {
+  PENDING
+  CLAIMED
+  COMPLETED
+  CANCELLED
+}
+
+enum ServiceType {
+  RIDE
+  COURIER
+}
+
+enum VehicleType {
+  REGULAR
+  COMFORT
+  XL
+}
+
+model User {
+  id        String   @id @default(cuid())
+  discordId String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customerBookings Booking[]     @relation("CustomerBookings")
+  providerBookings Booking[]     @relation("ProviderBookings")
+  providerStats    ProviderStats?
+  vouchesGiven     Vouch[]       @relation("VouchCustomer")
+  vouchesReceived  Vouch[]       @relation("VouchProvider")
+
+  @@index([discordId])
+}
+
+model Booking {
+  id            String        @id @default(cuid())
+  bookingNumber String        @unique
+  customerId    String
+  providerId    String?
+  serviceType   ServiceType
+  vehicleType   VehicleType?
+  pickup        String
+  destination   String
+  price         Decimal       @db.Decimal(10, 2)
+  notes         String?
+  status        BookingStatus @default(PENDING)
+  rating        Int?
+  channelId     String?
+  messageId     String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  claimedAt     DateTime?
+  completedAt   DateTime?
+  cancelledAt   DateTime?
+
+  customer User?  @relation("CustomerBookings", fields: [customerId], references: [discordId])
+  provider User?  @relation("ProviderBookings", fields: [providerId], references: [discordId])
+  vouch    Vouch?
+
+  @@index([customerId])
+  @@index([providerId])
+  @@index([status])
+  @@index([customerId, status])
+}
+
+model BookingSequence {
+  id         Int @id @default(1)
+  lastNumber Int @default(0)
+}
+
+model ProviderStats {
+  id        String   @id @default(cuid())
+  discordId String   @unique
+  claims    Int      @default(0)
+  completed Int      @default(0)
+  cancelled Int      @default(0)
+  avgRating Decimal  @default(0) @db.Decimal(3, 2)
+  revenue   Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [discordId], references: [discordId])
+
+  @@index([discordId])
+  @@index([completed])
+  @@index([revenue])
+}
+
+model Vouch {
+  id         String   @id @default(cuid())
+  bookingId  String   @unique
+  customerId String
+  providerId String
+  rating     Int
+  createdAt  DateTime @default(now())
+
+  booking  Booking @relation(fields: [bookingId], references: [id])
+  customer User    @relation("VouchCustomer", fields: [customerId], references: [discordId])
+  provider User    @relation("VouchProvider", fields: [providerId], references: [discordId])
+
+  @@index([providerId])
+}
+
+model Blacklist {
+  id        String   @id @default(cuid())
+  discordId String   @unique
+  reason    String?
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([discordId])
+}

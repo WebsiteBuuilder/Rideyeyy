@@ -19,8 +19,15 @@ export const config = {
 
   // Roles
   roles: {
-    admin: process.env['ADMIN_ROLE_ID'] ?? '0',
-    staff: process.env['STAFF_ROLE_ID'] ?? '0',
+    admin:    process.env['ADMIN_ROLE_ID']    ?? '0',
+    staff:    process.env['STAFF_ROLE_ID']    ?? '0',
+    provider: process.env['PROVIDER_ROLE_ID'] ?? '0',
+  },
+
+  // Channels
+  channels: {
+    bookingCategory: process.env['BOOKING_CATEGORY_ID'] ?? '0',
+    vouch:           process.env['VOUCH_CHANNEL_ID']      ?? '0',
   },
 
   // Daily reward
@@ -43,5 +50,6 @@ export const config = {
     commandCooldownMs: Number(process.env['COMMAND_COOLDOWN_MS'] ?? 3_000),
     gambleCooldownMs:  Number(process.env['GAMBLE_COOLDOWN_MS']  ?? 5_000),
     crateCooldownMs:   Number(process.env['CRATE_COOLDOWN_MS']   ?? 10_000),
+    bookCooldownMs:    300_000,
   },
 } as const;
