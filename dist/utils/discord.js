@@ -34,18 +34,13 @@ exports.waitForConfirmation = waitForConfirmation;
 exports.waitForFollowUpConfirmation = waitForFollowUpConfirmation;
 exports.hasAdminRole = hasAdminRole;
 exports.hasStaffRole = hasStaffRole;
+exports.hasProviderRole = hasProviderRole;
 exports.checkCooldown = checkCooldown;
 exports.isButtonInteraction = isButtonInteraction;
 exports.memberFromInteraction = memberFromInteraction;
 const discord_js_1 = require("discord.js");
 const config_1 = require("../config");
 const constants_1 = require("./constants");
-// ═══════════════════════════════════════════════════════════════════════════
-//  DISCORD CASINO UI KIT — Premium Design System
-// ═══════════════════════════════════════════════════════════════════════════
-// ---------------------------------------------------------------------------
-// Brand Identity
-// ---------------------------------------------------------------------------
 exports.BRAND = {
     name: 'GUHD RIDES',
     currency: 'Route Cash',
@@ -54,164 +49,106 @@ exports.BRAND = {
     logo: '◈',
     icon: '🎰',
 };
-// ---------------------------------------------------------------------------
-// Color Palette — Cohesive Casino Aesthetic
-// ---------------------------------------------------------------------------
 exports.COLOR = {
-    // Primary brand
-    BRAND: 0x1a1a2e, // Deep navy — background essence
-    ACCENT: 0x16213e, // Rich navy — secondary
-    // Casino Status Colors
-    WIN: 0x00d26a, // Emerald green — wins/success
-    LOSS: 0xff4757, // Crimson — losses
-    JACKPOT: 0xffd700, // Pure gold — jackpots/21
-    EPIC: 0xe056fd, // Vibrant purple — epic rewards
-    RARE: 0x9b59b6, // Royal purple — rare items
-    // Game State Colors
-    ACTIVE: 0x4a90d9, // Steel blue — active games
-    ELECTRIC: 0x00d4ff, // Electric cyan — highlights
-    // UI Colors
-    INFO: 0x5865f2, // Discord blurple — info
-    NEUTRAL: 0x2f3136, // Discord dark — neutral
-    WHITE: 0xffffff, // Clean white
-    MUTED: 0x747f8d, // Muted gray — subtle text
+    BRAND: 0x1a1a2e,
+    ACCENT: 0x16213e,
+    WIN: 0x00d26a,
+    LOSS: 0xff4757,
+    JACKPOT: 0xffd700,
+    EPIC: 0xe056fd,
+    RARE: 0x9b59b6,
+    ACTIVE: 0x4a90d9,
+    ELECTRIC: 0x00d4ff,
+    INFO: 0x5865f2,
+    NEUTRAL: 0x2f3136,
+    WHITE: 0xffffff,
+    MUTED: 0x747f8d,
 };
-// ---------------------------------------------------------------------------
-// Premium Visual Elements
-// ---------------------------------------------------------------------------
-/** Elegant line separator */
 exports.LINE = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
-/** Thin separator for sub-sections */
 exports.THIN_LINE = '─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─';
-/** Zero-width spacer */
 exports.SPACER = '\u200b';
-/** Card suit icons for premium display */
 exports.SUITS = {
     H: { icon: '♥', color: 'red', name: 'Hearts' },
     D: { icon: '♦', color: 'red', name: 'Diamonds' },
     C: { icon: '♣', color: 'black', name: 'Clubs' },
     S: { icon: '♠', color: 'black', name: 'Spades' },
 };
-// ---------------------------------------------------------------------------
-// Casino Iconography
-// ---------------------------------------------------------------------------
 exports.ICON = {
-    // Currency & Economy
     coin: '◈',
     coins: '💰',
     wallet: '👛',
     bank: '🏦',
-    // Games
     cards: '🃏',
     dice: '🎲',
     slot: '🎰',
     chip: '🪙',
-    // Status
     win: '✦',
     loss: '✕',
     push: '≈',
     jackpot: '★',
     streak: '🔥',
-    // Actions
     hit: '↓',
     stand: '■',
     double: '⬆',
     split: '⟷',
     fold: '↩',
-    // Rarity
+    up: '▲',
+    down: '▼',
     common: '○',
     uncommon: '◐',
     rare: '●',
     epic: '◆',
     legendary: '★',
-    // Misc
     time: '⏱',
     check: '✓',
     cross: '✕',
     arrow: '→',
-    up: '↗',
-    down: '↘',
 };
-// ---------------------------------------------------------------------------
-// Progress & Meter Components
-// ---------------------------------------------------------------------------
-/** Premium progress bar with gradient feel */
-function progressBar(value, max, size = 12) {
-    const ratio = max <= 0 ? 0 : Math.max(0, Math.min(1, value / max));
-    const filled = Math.round(ratio * size);
-    const empty = size - filled;
-    return '`[' + '▰'.repeat(filled) + '▱'.repeat(empty) + ']`';
+function progressBar(current, max, size = 10) {
+    const pct = Math.min(1, Math.max(0, current / max));
+    const filled = Math.round(pct * size);
+    return `\`[${'█'.repeat(filled)}${'░'.repeat(size - filled)}]\` ${Math.round(pct * 100)}%`;
 }
-/** Animated-feel meter with percentage */
 function meter(value, max) {
-    const pct = max <= 0 ? 0 : Math.round((value / max) * 100);
-    return `${progressBar(value, max, 12)}  **${pct}%**`;
+    return progressBar(value, max, 8);
 }
-/** XP-style bar for streaks */
-function streakBar(current, max) {
-    const filled = Math.min(current, max);
-    const empty = max - filled;
-    const icons = exports.ICON.streak.repeat(filled) + '○'.repeat(empty);
-    return `${icons}  \`${current}/${max}\``;
+function streakBar(streak, max) {
+    return `${exports.ICON.streak} ${progressBar(streak, max, max)}`;
 }
-// ---------------------------------------------------------------------------
-// Currency & Amount Formatting
-// ---------------------------------------------------------------------------
-/** Standard currency display */
 function rcDisplay(amount) {
-    return `**${exports.ICON.coin} ${amount}**`;
+    return `${exports.ICON.coin} **${amount}** ${exports.BRAND.ticker}`;
 }
-/** Large hero amount for big displays */
 function heroAmount(amount) {
-    return `# ${exports.ICON.coin} ${amount}`;
+    return `# ${exports.ICON.coin} ${amount}\n${exports.BRAND.ticker}`;
 }
-/** Compact inline amount */
 function inlineRC(amount) {
-    const formatted = typeof amount === 'number' ? amount.toString() : amount;
-    return `\`${exports.ICON.coin} ${formatted}\``;
+    return `\`${amount} ${exports.BRAND.ticker}\``;
 }
-/** Net change with directional indicator */
 function netLabel(net, positive) {
-    if (positive) {
-        return `\`+ ${net}\` ${exports.ICON.up}`;
-    }
-    return `\`- ${net}\` ${exports.ICON.down}`;
+    return positive ? `\`+ ${net}\` ${exports.ICON.up}` : `\`- ${net}\` ${exports.ICON.down}`;
 }
-/** Large net change for results */
-function heroNet(amount, positive) {
-    const sign = positive ? '+' : '-';
-    return `# ${sign} ${exports.ICON.coin} ${amount}`;
+function heroNet(net, positive) {
+    return positive ? `# +${net}` : `# -${net}`;
 }
-// ---------------------------------------------------------------------------
-// Stat & Field Components
-// ---------------------------------------------------------------------------
-/** Clean stat block for embed fields */
 function statBlock(label, value) {
-    return `\`${label}\`\n**${value}**`;
+    return `**${label}**\n${value}`;
 }
-/** Inline stat for compact displays */
 function inlineStat(label, value) {
-    return `\`${label}:\` **${value}**`;
+    return `**${label}:** ${value}`;
 }
-/** Key-value pair row */
 function kvRow(key, value) {
     return `> **${key}** ${exports.ICON.arrow} ${value}`;
 }
-// ---------------------------------------------------------------------------
-// Status Banner Components (ANSI Code Blocks)
-// ---------------------------------------------------------------------------
-/** Premium status banner with ANSI colors */
 function statusBanner(text, style = 'info') {
     const colorCode = {
-        win: '32', // Green
-        loss: '31', // Red
-        jackpot: '33', // Gold/Yellow
-        info: '36', // Cyan
-        neutral: '37', // White
+        win: '32',
+        loss: '31',
+        jackpot: '33',
+        info: '36',
+        neutral: '37',
     };
-    return `\`\`\`ansi\n[1;${colorCode[style]}m${text}[0m\n\`\`\``;
+    return `\`\`\`ansi\n\u001b[1;${colorCode[style]}m${text}\u001b[0m\n\`\`\``;
 }
-/** Game result banner */
 function resultBanner(result) {
     const banners = {
         win: { text: '✦  WINNER  ✦', style: 'win' },
@@ -224,25 +161,18 @@ function resultBanner(result) {
     const { text, style } = banners[result] ?? banners.loss;
     return statusBanner(text, style);
 }
-// ---------------------------------------------------------------------------
-// Card Display Components
-// ---------------------------------------------------------------------------
-/** Premium single card display */
 function cardDisplay(rank, suit) {
     const suitData = exports.SUITS[suit] ?? { icon: suit, color: 'black' };
     return `\`[ ${rank}${suitData.icon} ]\``;
 }
-/** Hidden card display */
 function hiddenCard() {
     return '`[ ?? ]`';
 }
-/** Hand display with cards */
 function handDisplay(cards, hideIndex) {
     return cards
         .map((card, i) => (i === hideIndex ? hiddenCard() : cardDisplay(card.rank, card.suit)))
         .join('  ');
 }
-/** Hand value display with special states */
 function handValue(value, revealed) {
     if (!revealed)
         return '`Value: ??`';
@@ -252,108 +182,42 @@ function handValue(value, revealed) {
         return `**${value}** \`BUST\``;
     return `**${value}**`;
 }
-// ---------------------------------------------------------------------------
-// Table Layout Components
-// ---------------------------------------------------------------------------
-/** Casino table header */
 function tableHeader(title) {
     return `## ${exports.ICON.cards} ${title}\n${exports.LINE}`;
 }
-/** Dealer section */
 function dealerSection(cards, value) {
     return `**DEALER**\n${cards}\n${value}`;
 }
-/** Player section */
 function playerSection(cards, value) {
     return `**YOU**\n${cards}\n${value}`;
 }
-// ---------------------------------------------------------------------------
-// Embed Builders — Premium Casino Style
-// ---------------------------------------------------------------------------
-/**
- * Base casino embed with consistent branding
- */
 function baseEmbed(color, balance, guild) {
     const iconURL = guild?.iconURL({ size: 256 }) ?? undefined;
-    const hasBalance = balance && balance !== '—';
-    return new discord_js_1.EmbedBuilder()
+    const embed = new discord_js_1.EmbedBuilder()
         .setColor(color)
-        .setTimestamp()
-        .setFooter({
-        text: hasBalance
-            ? `${exports.ICON.coin} ${balance}  ·  ${exports.BRAND.name}`
-            : `${exports.BRAND.name}  ·  ${exports.BRAND.tagline}`,
-        iconURL,
-    });
+        .setAuthor({ name: `${exports.BRAND.logo}  ${exports.BRAND.name}`, iconURL })
+        .setFooter({ text: `${exports.BRAND.tagline}  ·  ${exports.BRAND.name}` })
+        .setTimestamp();
+    if (balance && balance !== '—') {
+        embed.setDescription(`${exports.ICON.coin} **${balance}** ${exports.BRAND.ticker}`);
+    }
+    return embed;
 }
-/**
- * Premium branded embed with author line
- */
 function brandedEmbed(color, balance, guild) {
-    const iconURL = guild?.iconURL({ size: 256 }) ?? undefined;
-    const hasBalance = balance && balance !== '—';
-    return new discord_js_1.EmbedBuilder()
-        .setColor(color)
-        .setAuthor({
-        name: `${exports.BRAND.logo}  ${exports.BRAND.name}`,
-        iconURL
-    })
-        .setTimestamp()
-        .setFooter({
-        text: hasBalance
-            ? `Balance: ${exports.ICON.coin} ${balance}`
-            : exports.BRAND.tagline,
-    });
+    return baseEmbed(color, balance, guild);
 }
-/**
- * Casino game embed with table styling
- */
 function gameEmbed(title, color, guild) {
-    const iconURL = guild?.iconURL({ size: 256 }) ?? undefined;
-    return new discord_js_1.EmbedBuilder()
-        .setColor(color)
-        .setAuthor({
-        name: `${exports.BRAND.icon}  ${exports.BRAND.name}`,
-        iconURL
-    })
-        .setTitle(title)
-        .setTimestamp()
-        .setFooter({ text: exports.BRAND.tagline });
+    return baseEmbed(color, undefined, guild).setTitle(title);
 }
-/**
- * Result embed with prominent status
- */
 function resultEmbed(result, payout, balance, guild) {
-    const colors = {
-        win: exports.COLOR.WIN,
-        loss: exports.COLOR.LOSS,
-        push: exports.COLOR.NEUTRAL,
-        jackpot: exports.COLOR.JACKPOT,
-        bust: exports.COLOR.LOSS,
-        surrender: exports.COLOR.MUTED,
-    };
-    const titles = {
-        win: 'YOU WIN',
-        loss: 'DEALER WINS',
-        push: 'PUSH',
-        jackpot: 'BLACKJACK!',
-        bust: 'BUST',
-        surrender: 'SURRENDERED',
-    };
-    return gameEmbed(titles[result], colors[result], guild)
-        .setDescription(resultBanner(result))
-        .addFields({ name: exports.SPACER, value: statBlock('PAYOUT', `${exports.ICON.coin} ${payout}`), inline: true }, { name: exports.SPACER, value: statBlock('BALANCE', `${exports.ICON.coin} ${balance}`), inline: true });
+    const isWin = result.toLowerCase().includes('win');
+    return brandedEmbed(isWin ? exports.COLOR.WIN : exports.COLOR.LOSS, balance, guild)
+        .setTitle(result)
+        .setDescription(`${statBlock('Payout', payout)}\n${statBlock('Balance', balance)}`);
 }
-// ---------------------------------------------------------------------------
-// Reply Helpers
-// ---------------------------------------------------------------------------
-/** Reply ephemerally with an embed */
 async function ephemeralEmbed(interaction, embed) {
     try {
-        if (interaction.deferred) {
-            await interaction.followUp({ embeds: [embed], ephemeral: true });
-        }
-        else if (interaction.replied) {
+        if (interaction.deferred || interaction.replied) {
             await interaction.followUp({ embeds: [embed], ephemeral: true });
         }
         else {
@@ -364,13 +228,9 @@ async function ephemeralEmbed(interaction, embed) {
         console.error('[v0] ephemeralEmbed error:', err);
     }
 }
-/** Reply publicly with an embed */
 async function publicEmbed(interaction, embed) {
     try {
-        if (interaction.deferred) {
-            await interaction.followUp({ embeds: [embed] });
-        }
-        else if (interaction.replied) {
+        if (interaction.deferred || interaction.replied) {
             await interaction.followUp({ embeds: [embed] });
         }
         else {
@@ -381,7 +241,6 @@ async function publicEmbed(interaction, embed) {
         console.error('[v0] publicEmbed error:', err);
     }
 }
-/** Quick ephemeral text reply */
 async function ephemeralReply(interaction, content) {
     if (interaction.replied || interaction.deferred) {
         await interaction.followUp({ content, ephemeral: true });
@@ -390,15 +249,9 @@ async function ephemeralReply(interaction, content) {
         await interaction.reply({ content, ephemeral: true });
     }
 }
-/** Premium action button */
 function actionButton(customId, label, style, disabled = false) {
-    return new discord_js_1.ButtonBuilder()
-        .setCustomId(customId)
-        .setLabel(label)
-        .setStyle(style)
-        .setDisabled(disabled);
+    return new discord_js_1.ButtonBuilder().setCustomId(customId).setLabel(label).setStyle(style).setDisabled(disabled);
 }
-/** Confirmation button row */
 function buildConfirmRow(customIdPrefix) {
     return new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.ButtonBuilder()
         .setCustomId(`${customIdPrefix}:confirm`)
@@ -408,16 +261,9 @@ function buildConfirmRow(customIdPrefix) {
         .setLabel('CANCEL')
         .setStyle(discord_js_1.ButtonStyle.Secondary));
 }
-// ---------------------------------------------------------------------------
-// Confirmation Flows
-// ---------------------------------------------------------------------------
 async function waitForConfirmation(interaction, customIdPrefix, warningMessage) {
     const row = buildConfirmRow(customIdPrefix);
-    await interaction.reply({
-        content: warningMessage,
-        components: [row],
-        ephemeral: true,
-    });
+    await interaction.reply({ content: warningMessage, components: [row], ephemeral: true });
     return waitForButtonConfirmation(interaction, customIdPrefix);
 }
 async function waitForFollowUpConfirmation(interaction, customIdPrefix, warningMessage) {
@@ -467,19 +313,17 @@ async function waitForButtonConfirmation(interaction, customIdPrefix) {
         return false;
     }
 }
-// ---------------------------------------------------------------------------
-// Permission & Role Helpers
-// ---------------------------------------------------------------------------
 function hasAdminRole(member) {
-    return member.roles.cache.has(config_1.config.roles.admin);
+    return config_1.config.roles.admin !== '0' && member.roles.cache.has(config_1.config.roles.admin);
 }
 function hasStaffRole(member) {
     return (hasAdminRole(member) ||
         (config_1.config.roles.staff !== '0' && member.roles.cache.has(config_1.config.roles.staff)));
 }
-// ---------------------------------------------------------------------------
-// Cooldown System
-// ---------------------------------------------------------------------------
+function hasProviderRole(member) {
+    return (hasAdminRole(member) ||
+        (config_1.config.roles.provider !== '0' && member.roles.cache.has(config_1.config.roles.provider)));
+}
 const cooldowns = new Map();
 function checkCooldown(userId, key, cooldownMs) {
     const mapKey = `${userId}:${key}`;
@@ -491,11 +335,10 @@ function checkCooldown(userId, key, cooldownMs) {
     cooldowns.set(mapKey, now + cooldownMs);
     return null;
 }
-// ---------------------------------------------------------------------------
-// Type Guards
-// ---------------------------------------------------------------------------
 function isButtonInteraction(interaction) {
-    return interaction instanceof Object && 'isButton' in interaction && interaction.isButton();
+    return (interaction instanceof Object &&
+        'isButton' in interaction &&
+        interaction.isButton());
 }
 function memberFromInteraction(interaction) {
     if (!interaction.inGuild() || !interaction.member)
