@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js';
+import type { Booking, ServiceType, VehicleType } from '@prisma/client';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  SHARED TYPES
@@ -134,9 +135,76 @@ export interface IGamblingService {
   getBlackjackGame(gameId: string, userId: string): Promise<BlackjackGameRow | null>;
 }
 
+// ---------------------------------------------------------------------------
+// Booking
+// ---------------------------------------------------------------------------
+
+export interface BookingDraft {
+  serviceType: ServiceType;
+  vehicleType?: VehicleType;
+  pickup?: string;
+  destination?: string;
+  price?: Decimal;
+}
+
+export interface CreateBookingInput {
+  customerId: string;
+  serviceType: ServiceType;
+  vehicleType?: VehicleType;
+  pickup: string;
+  destination: string;
+  price: Decimal;
+  notes?: string;
+}
+
+export interface ProviderStatsRow {
+  discordId: string;
+  claims: number;
+  completed: number;
+  cancelled: number;
+  avgRating: Decimal;
+  revenue: Decimal;
+}
+
+export interface IBookingService {
+  setDraft(userId: string, draft: BookingDraft): void;
+  getDraft(userId: string): BookingDraft | undefined;
+  clearDraft(userId: string): void;
+  countActiveBookings(customerId: string): Promise<number>;
+  hasDuplicateActiveRoute(customerId: string, pickup: string, destination: string): Promise<boolean>;
+  createBooking(input: CreateBookingInput): Promise<Booking>;
+  getByBookingNumber(bookingNumber: string): Promise<Booking | null>;
+  claimBooking(bookingNumber: string, providerId: string): Promise<Booking | null>;
+  completeBooking(bookingNumber: string, providerId: string): Promise<Booking | null>;
+  cancelBooking(bookingNumber: string): Promise<Booking | null>;
+  setRating(bookingNumber: string, rating: number): Promise<Booking | null>;
+  updateTicketRefs(bookingNumber: string, channelId: string, messageId: string): Promise<void>;
+}
+
+export interface IProviderStatsService {
+  ensureStats(discordId: string): Promise<void>;
+  incrementClaims(discordId: string): Promise<void>;
+  incrementCompleted(discordId: string, revenue: Decimal): Promise<void>;
+  incrementCancelled(discordId: string): Promise<void>;
+  recalculateAvgRating(providerId: string): Promise<void>;
+  getProviderStats(discordId: string): Promise<ProviderStatsRow>;
+  getTopProvidersByCompletedJobs(limit: number): Promise<ProviderStatsRow[]>;
+  getTopProvidersByRevenue(limit: number): Promise<ProviderStatsRow[]>;
+  getTopProvidersByAverageRating(limit: number, minCompleted?: number): Promise<ProviderStatsRow[]>;
+}
+
+export interface IBlacklistService {
+  isBlacklisted(discordId: string): Promise<boolean>;
+  add(discordId: string, createdBy: string, reason?: string): Promise<void>;
+  remove(discordId: string): Promise<boolean>;
+}
+
 export interface AppServices {
   economy:  IEconomyService;
   user:     IUserService;
   crate:    ICrateService;
   gambling: IGamblingService;
+  booking:  IBookingService;
+  providerStats: IProviderStatsService;
+  blacklist: IBlacklistService;
 }
