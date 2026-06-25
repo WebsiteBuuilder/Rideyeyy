@@ -36,19 +36,19 @@ import {
 } from '../utils/bookingEmbeds';
 import { triggerReviewFlow, handleReviewRating } from '../utils/reviewFlow';
 
-export const PICKUP_MODAL = 'gudhrides-book-pickup-modal';
-export const DEST_MODAL = 'gudhrides-book-destination-modal';
-export const PRICE_MODAL = 'gudhrides-book-price-modal';
-export const NOTES_MODAL = 'gudhrides-book-notes-modal';
+// Discord does not allow opening a modal in response to a modal submission,
+// so all booking details are collected in a single modal (max 5 inputs)
+// opened from the service/vehicle selection buttons.
+export const DETAILS_MODAL = 'gudhrides-book-details-modal';
 
 export const data = new SlashCommandBuilder()
   .setName('book')
   .setDescription('Book a ride or courier delivery with GUHD RIDES');
 
-function pickupModal(): ModalBuilder {
+function detailsModal(): ModalBuilder {
   return new ModalBuilder()
-    .setCustomId(PICKUP_MODAL)
-    .setTitle('Pickup Address')
+    .setCustomId(DETAILS_MODAL)
+    .setTitle('Booking Details')
     .addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
@@ -57,15 +57,7 @@ function pickupModal(): ModalBuilder {
           .setStyle(TextInputStyle.Paragraph)
           .setRequired(true)
           .setMaxLength(500)
-      )
-    );
-}
-
-function destinationModal(): ModalBuilder {
-  return new ModalBuilder()
-    .setCustomId(DEST_MODAL)
-    .setTitle('Destination Address')
-    .addComponents(
+      ),
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId('destination')
@@ -73,36 +65,20 @@ function destinationModal(): ModalBuilder {
           .setStyle(TextInputStyle.Paragraph)
           .setRequired(true)
           .setMaxLength(500)
-      )
-    );
-}
-
-function priceModal(): ModalBuilder {
-  return new ModalBuilder()
-    .setCustomId(PRICE_MODAL)
-    .setTitle('Customer Offered Price')
-    .addComponents(
+      ),
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId('price')
-          .setLabel('Price (USD)')
+          .setLabel('Offered Price (USD)')
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
           .setMaxLength(20)
           .setPlaceholder('25.00')
-      )
-    );
-}
-
-function notesModal(): ModalBuilder {
-  return new ModalBuilder()
-    .setCustomId(NOTES_MODAL)
-    .setTitle('Additional Notes')
-    .addComponents(
+      ),
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId('notes')
-          .setLabel('Notes (optional)')
+          .setLabel('Additional Notes (optional)')
           .setStyle(TextInputStyle.Paragraph)
           .setRequired(false)
           .setMaxLength(500)
@@ -164,7 +140,7 @@ export async function handleBookButton(
     const serviceType = value as ServiceType;
     services.booking.setDraft(interaction.user.id, { serviceType });
     if (serviceType === 'COURIER') {
-      await interaction.showModal(pickupModal());
+      await interaction.showModal(detailsModal());
       return;
     }
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -189,7 +165,7 @@ export async function handleBookButton(
       ...draft,
       vehicleType: value as VehicleType,
     });
-    await interaction.showModal(pickupModal());
+    await interaction.showModal(detailsModal());
   }
 }
 
@@ -197,81 +173,52 @@ export async function handleBookModal(
   interaction: ModalSubmitInteraction,
   services: AppServices
 ): Promise<void> {
+  if (interaction.customId !== DETAILS_MODAL) return;
+
   const userId = interaction.user.id;
   const draft = services.booking.getDraft(userId);
-
-  if (interaction.customId === PICKUP_MODAL) {
-    if (!draft?.serviceType) {
-      await ephemeralReply(interaction, 'Booking session expired. Run `/book` again.');
-      return;
-    }
-    const pickup = interaction.fields.getTextInputValue('pickup').trim();
-    if (!pickup) {
-      await ephemeralReply(interaction, 'Pickup address is required.');
-      return;
-    }
-    services.booking.setDraft(userId, { ...draft, pickup });
-    await interaction.showModal(destinationModal());
+  if (!draft?.serviceType) {
+    await ephemeralReply(interaction, 'Booking session expired. Run `/book` again.');
     return;
   }
 
-  if (interaction.customId === DEST_MODAL) {
-    if (!draft?.pickup) {
-      await ephemeralReply(interaction, 'Booking session expired. Run `/book` again.');
-      return;
-    }
-    const destination = interaction.fields.getTextInputValue('destination').trim();
-    if (!destination) {
-      await ephemeralReply(interaction, 'Destination address is required.');
-      return;
-    }
-    services.booking.setDraft(userId, { ...draft, destination });
-    await interaction.showModal(priceModal());
+  const pickup = interaction.fields.getTextInputValue('pickup').trim();
+  const destination = interaction.fields.getTextInputValue('destination').trim();
+  const notes = interaction.fields.getTextInputValue('notes')?.trim() || undefined;
+
+  if (!pickup || !destination) {
+    await ephemeralReply(interaction, 'Pickup and destination are required.');
     return;
   }
 
-  if (interaction.customId === PRICE_MODAL) {
-    if (!draft?.destination) {
-      await ephemeralReply(interaction, 'Booking session expired. Run `/book` again.');
-      return;
-    }
-    try {
-      const price = parseAmount(interaction.fields.getTextInputValue('price'));
-      services.booking.setDraft(userId, { ...draft, price });
-      await interaction.showModal(notesModal());
-    } catch {
-      await ephemeralReply(interaction, 'Invalid price. Enter a positive number (e.g. `25.00`).');
-    }
+  let price: Decimal;
+  try {
+    price = parseAmount(interaction.fields.getTextInputValue('price'));
+  } catch {
+    await ephemeralReply(interaction, 'Invalid price. Enter a positive number (e.g. `25.00`).');
     return;
   }
 
-  if (interaction.customId === NOTES_MODAL) {
-    if (!draft?.serviceType || !draft.pickup || !draft.destination || !draft.price) {
-      await ephemeralReply(interaction, 'Booking session expired. Run `/book` again.');
-      return;
-    }
-    const notes = interaction.fields.getTextInputValue('notes')?.trim() || undefined;
-    try {
-      const booking = await services.booking.createBooking({
-        customerId: userId,
-        serviceType: draft.serviceType,
-        vehicleType: draft.vehicleType,
-        pickup: draft.pickup,
-        destination: draft.destination,
-        price: draft.price,
-        notes,
-      });
-      await interaction.reply({
-        content: `Booking **${booking.bookingNumber}** created successfully!`,
-        ephemeral: true,
-      });
-      await createTicketChannel(interaction.client, interaction.guildId!, booking, services);
-    } catch (err) {
-      const msg = err instanceof Error && err.message === 'DUPLICATE_ROUTE'
-        ? 'You already have an active booking with the same pickup and destination.'
-        : 'Failed to create booking. Please try again.';
-      await ephemeralReply(interaction, msg);
-    }
+  try {
+    const booking = await services.booking.createBooking({
+      customerId: userId,
+      serviceType: draft.serviceType,
+      vehicleType: draft.vehicleType,
+      pickup,
+      destination,
+      price,
+      notes,
+    });
+    await interaction.reply({
+      content: `Booking **${booking.bookingNumber}** created successfully!`,
+      ephemeral: true,
+    });
+    await createTicketChannel(interaction.client, interaction.guildId!, booking, services);
+  } catch (err) {
+    const msg = err instanceof Error && err.message === 'DUPLICATE_ROUTE'
+      ? 'You already have an active booking with the same pickup and destination.'
+      : 'Failed to create booking. Please try again.';
+    await ephemeralReply(interaction, msg);
   }
 }
 

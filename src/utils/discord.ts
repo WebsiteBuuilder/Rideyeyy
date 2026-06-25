@@ -9,6 +9,7 @@ import {
   Guild,
   GuildMember,
   MessageComponentInteraction,
+  ModalSubmitInteraction,
   SlashCommandBuilder,
 } from 'discord.js';
 import { config } from '../config';
@@ -228,7 +229,7 @@ export function resultEmbed(
 }
 
 export async function ephemeralEmbed(
-  interaction: ChatInputCommandInteraction | MessageComponentInteraction,
+  interaction: ChatInputCommandInteraction | MessageComponentInteraction | ModalSubmitInteraction,
   embed: EmbedBuilder
 ): Promise<void> {
   try {
@@ -243,7 +244,7 @@ export async function ephemeralEmbed(
 }
 
 export async function publicEmbed(
-  interaction: ChatInputCommandInteraction | MessageComponentInteraction,
+  interaction: ChatInputCommandInteraction | MessageComponentInteraction | ModalSubmitInteraction,
   embed: EmbedBuilder
 ): Promise<void> {
   try {
@@ -258,7 +259,7 @@ export async function publicEmbed(
 }
 
 export async function ephemeralReply(
-  interaction: ChatInputCommandInteraction | MessageComponentInteraction,
+  interaction: ChatInputCommandInteraction | MessageComponentInteraction | ModalSubmitInteraction,
   content: string
 ): Promise<void> {
   if (interaction.replied || interaction.deferred) {
