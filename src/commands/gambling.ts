@@ -15,6 +15,7 @@ import { parseAmount, formatRC } from '../utils/math';
 import {
   ephemeralReply,
   checkCooldown,
+  enforceCasinoChannel,
   gameEmbed,
   brandedEmbed,
   COLOR,
@@ -153,15 +154,18 @@ function buildBlackjackEmbed(
 
 function buildBlackjackButtons(
   gameId: string,
-  canDouble: boolean
+  canDouble: boolean,
+  ownerId: string
 ): ActionRowBuilder<ButtonBuilder> {
+  // customId format: "bj:<action>:<gameId>:<ownerId>" — ownerId locks the
+  // buttons to the player who started the (now public) game.
   const btns: ButtonBuilder[] = [
     new ButtonBuilder()
-      .setCustomId(`bj:hit:${gameId}`)
+      .setCustomId(`bj:hit:${gameId}:${ownerId}`)
       .setLabel(`${ICON.hit} HIT`)
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
-      .setCustomId(`bj:stand:${gameId}`)
+      .setCustomId(`bj:stand:${gameId}:${ownerId}`)
       .setLabel(`${ICON.stand} STAND`)
       .setStyle(ButtonStyle.Success),
   ];
@@ -169,7 +173,7 @@ function buildBlackjackButtons(
   if (canDouble) {
     btns.push(
       new ButtonBuilder()
-        .setCustomId(`bj:double:${gameId}`)
+        .setCustomId(`bj:double:${gameId}:${ownerId}`)
         .setLabel(`${ICON.double} DOUBLE`)
         .setStyle(ButtonStyle.Secondary)
     );
@@ -177,7 +181,7 @@ function buildBlackjackButtons(
 
   btns.push(
     new ButtonBuilder()
-      .setCustomId(`bj:surrender:${gameId}`)
+      .setCustomId(`bj:surrender:${gameId}:${ownerId}`)
       .setLabel(`${ICON.fold} FOLD`)
       .setStyle(ButtonStyle.Danger)
   );
@@ -222,6 +226,7 @@ export async function handleCoinflip(
   interaction: ChatInputCommandInteraction,
   services: AppServices
 ): Promise<void> {
+  if (!(await enforceCasinoChannel(interaction))) return;
   const cd = checkCooldown(interaction.user.id, 'coinflip', config.limits.gambleCooldownMs);
   if (cd) {
     await ephemeralReply(interaction, `${ICON.time} Slow down — wait **${cd}s** before flipping again.`);
@@ -277,6 +282,7 @@ export async function handleDice(
   interaction: ChatInputCommandInteraction,
   services: AppServices
 ): Promise<void> {
+  if (!(await enforceCasinoChannel(interaction))) return;
   const cd = checkCooldown(interaction.user.id, 'dice', config.limits.gambleCooldownMs);
   if (cd) {
     await ephemeralReply(interaction, `${ICON.time} Slow down — wait **${cd}s** before rolling again.`);
@@ -335,6 +341,7 @@ export async function handleBlackjack(
   interaction: ChatInputCommandInteraction,
   services: AppServices
 ): Promise<void> {
+  if (!(await enforceCasinoChannel(interaction))) return;
   try {
     const bet = parseAmount(interaction.options.getString('bet', true));
     await services.user.ensureUser(interaction.user.id);
@@ -356,10 +363,10 @@ export async function handleBlackjack(
     );
 
     const row = game.status === 'player_turn'
-      ? buildBlackjackButtons(game.gameId, game.canDouble)
+      ? buildBlackjackButtons(game.gameId, game.canDouble, interaction.user.id)
       : null;
 
-    await interaction.reply({ embeds: [embed], components: row ? [row] : [], flags: MessageFlags.Ephemeral });
+    await interaction.reply({ embeds: [embed], components: row ? [row] : [] });
   } catch (err) {
     if (err instanceof InsufficientFundsError) {
       await ephemeralReply(interaction, `${ICON.loss} Not enough Route Cash for that bet.`);
@@ -377,8 +384,17 @@ export async function handleBlackjackButton(
   interaction: ButtonInteraction,
   services: AppServices
 ): Promise<void> {
-  const [, action, gameId] = interaction.customId.split(':');
+  const [, action, gameId, ownerId] = interaction.customId.split(':');
   if (!action || !gameId) return;
+
+  // The game message is public — only the player who started it may act.
+  if (ownerId && ownerId !== interaction.user.id) {
+    await interaction.reply({
+      content: `${ICON.cross} This isn't your blackjack game — start your own with \`/blackjack\`.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
 
   try {
     if (action === 'hit') {
@@ -398,7 +414,7 @@ export async function handleBlackjackButton(
 
       const canDouble = game ? game.player_hand_json.length === 2 && !game.doubled : false;
       const embed = buildBlackjackEmbed(services, playerHand, game!.dealer_hand_json, bet, false);
-      await interaction.update({ embeds: [embed], components: [buildBlackjackButtons(gameId, canDouble)] });
+      await interaction.update({ embeds: [embed], components: [buildBlackjackButtons(gameId, canDouble, interaction.user.id)] });
 
     } else if (action === 'stand') {
       const result = await services.gambling.stand(gameId, interaction.user.id);

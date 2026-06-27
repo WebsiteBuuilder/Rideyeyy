@@ -366,6 +366,25 @@ async function waitForButtonConfirmation(
   }
 }
 
+/**
+ * Restricts casino games to the configured casino channel. Returns true if the
+ * command may proceed. When CASINO_CHANNEL_ID is unset ('0'), games work
+ * anywhere (no breakage).
+ */
+export async function enforceCasinoChannel(
+  interaction: ChatInputCommandInteraction
+): Promise<boolean> {
+  const casino = config.channels.casino;
+  if (casino && casino !== '0' && interaction.channelId !== casino) {
+    await ephemeralReply(
+      interaction,
+      `${ICON.cross} Casino games can only be played in <#${casino}>.`
+    );
+    return false;
+  }
+  return true;
+}
+
 export function hasAdminRole(member: GuildMember): boolean {
   return config.roles.admin !== '0' && member.roles.cache.has(config.roles.admin);
 }

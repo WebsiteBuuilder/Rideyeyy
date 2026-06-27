@@ -29,6 +29,7 @@ exports.config = {
         vouch: process.env['VOUCH_CHANNEL_ID'] ?? '0',
         transcript: process.env['TRANSCRIPT_CHANNEL_ID'] ?? '1520338486467498174',
         orderHere: process.env['ORDER_CHANNEL_ID'] ?? '1509654528801243316',
+        casino: process.env['CASINO_CHANNEL_ID'] ?? '1509652333070651444',
     },
     // Daily reward
     daily: {

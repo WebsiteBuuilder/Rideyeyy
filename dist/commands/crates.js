@@ -99,6 +99,8 @@ exports.data = new discord_js_1.SlashCommandBuilder()
     .setName('crate')
     .setDescription('Open reward crates with Route Cash');
 async function execute(interaction, services) {
+    if (!(await (0, discord_1.enforceCasinoChannel)(interaction)))
+        return;
     await interaction.reply({
         embeds: [buildShopEmbed()],
         components: [buildCrateButtons()],
@@ -167,8 +169,17 @@ async function handleCrateButton(interaction, services) {
             rewardLines.join('\n'))
             .addFields({ name: discord_1.SPACER, value: (0, discord_1.statBlock)('COST', `${discord_1.ICON.coin} ${(0, math_1.formatRC)(meta.cost)}`), inline: true }, { name: discord_1.SPACER, value: (0, discord_1.statBlock)('BALANCE', `${discord_1.ICON.coin} ${(0, math_1.formatRC)(balance)}`), inline: true })
             .setTimestamp()
-            .setFooter({ text: `${discord_1.BRAND.name}  ·  ${discord_1.BRAND.tagline}` });
-        await interaction.update({ embeds: [embed], components: [buildCrateButtons()] });
+            .setFooter({ text: `Opened by ${interaction.user.username}  ·  ${discord_1.BRAND.name}` });
+        // Keep the opener's private shop ready for another pull...
+        await interaction.update({ embeds: [buildShopEmbed()], components: [buildCrateButtons()] });
+        // ...and broadcast the result to the channel so everyone can react.
+        const channel = interaction.channel;
+        if (channel && channel.isTextBased() && !channel.isDMBased()) {
+            await channel.send({
+                content: `${discord_1.ICON.slot} <@${interaction.user.id}> opened a **${meta.label}** crate!`,
+                embeds: [embed],
+            }).catch(() => { });
+        }
     }
     catch (err) {
         if (err instanceof EconomyService_1.InsufficientFundsError) {

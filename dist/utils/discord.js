@@ -32,6 +32,7 @@ exports.actionButton = actionButton;
 exports.buildConfirmRow = buildConfirmRow;
 exports.waitForConfirmation = waitForConfirmation;
 exports.waitForFollowUpConfirmation = waitForFollowUpConfirmation;
+exports.enforceCasinoChannel = enforceCasinoChannel;
 exports.hasAdminRole = hasAdminRole;
 exports.hasStaffRole = hasStaffRole;
 exports.hasProviderRole = hasProviderRole;
@@ -318,6 +319,19 @@ async function waitForButtonConfirmation(interaction, customIdPrefix) {
         await interaction.editReply({ content: '`Confirmation timed out.`', components: [] }).catch(() => { });
         return false;
     }
+}
+/**
+ * Restricts casino games to the configured casino channel. Returns true if the
+ * command may proceed. When CASINO_CHANNEL_ID is unset ('0'), games work
+ * anywhere (no breakage).
+ */
+async function enforceCasinoChannel(interaction) {
+    const casino = config_1.config.channels.casino;
+    if (casino && casino !== '0' && interaction.channelId !== casino) {
+        await ephemeralReply(interaction, `${exports.ICON.cross} Casino games can only be played in <#${casino}>.`);
+        return false;
+    }
+    return true;
 }
 function hasAdminRole(member) {
     return config_1.config.roles.admin !== '0' && member.roles.cache.has(config_1.config.roles.admin);

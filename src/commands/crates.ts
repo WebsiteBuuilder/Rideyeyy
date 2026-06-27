@@ -7,6 +7,7 @@ import {
   EmbedBuilder,
   MessageFlags,
   SlashCommandBuilder,
+  TextChannel,
 } from 'discord.js';
 import type { AppServices, CrateType } from '../types';
 import { InsufficientFundsError } from '../services/EconomyService';
@@ -14,6 +15,7 @@ import { formatRC } from '../utils/math';
 import {
   ephemeralReply,
   checkCooldown,
+  enforceCasinoChannel,
   COLOR,
   LINE,
   THIN_LINE,
@@ -142,6 +144,7 @@ export async function execute(
   interaction: ChatInputCommandInteraction,
   services: AppServices
 ): Promise<void> {
+  if (!(await enforceCasinoChannel(interaction))) return;
   await interaction.reply({
     embeds: [buildShopEmbed()],
     components: [buildCrateButtons()],
@@ -228,9 +231,19 @@ export async function handleCrateButton(
         { name: SPACER, value: statBlock('BALANCE', `${ICON.coin} ${formatRC(balance)}`), inline: true }
       )
       .setTimestamp()
-      .setFooter({ text: `${BRAND.name}  ·  ${BRAND.tagline}` });
+      .setFooter({ text: `Opened by ${interaction.user.username}  ·  ${BRAND.name}` });
 
-    await interaction.update({ embeds: [embed], components: [buildCrateButtons()] });
+    // Keep the opener's private shop ready for another pull...
+    await interaction.update({ embeds: [buildShopEmbed()], components: [buildCrateButtons()] });
+
+    // ...and broadcast the result to the channel so everyone can react.
+    const channel = interaction.channel;
+    if (channel && channel.isTextBased() && !channel.isDMBased()) {
+      await (channel as TextChannel).send({
+        content: `${ICON.slot} <@${interaction.user.id}> opened a **${meta.label}** crate!`,
+        embeds: [embed],
+      }).catch(() => { /* broadcast is best-effort */ });
+    }
   } catch (err) {
     if (err instanceof InsufficientFundsError) {
       const currentBalance = await services.economy.getBalance(interaction.user.id);

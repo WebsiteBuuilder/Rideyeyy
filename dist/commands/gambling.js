@@ -102,25 +102,27 @@ function buildBlackjackEmbed(services, playerHand, dealerHand, bet, showDealer, 
 // ---------------------------------------------------------------------------
 // Blackjack Buttons — Modern Casino Style
 // ---------------------------------------------------------------------------
-function buildBlackjackButtons(gameId, canDouble) {
+function buildBlackjackButtons(gameId, canDouble, ownerId) {
+    // customId format: "bj:<action>:<gameId>:<ownerId>" — ownerId locks the
+    // buttons to the player who started the (now public) game.
     const btns = [
         new discord_js_1.ButtonBuilder()
-            .setCustomId(`bj:hit:${gameId}`)
+            .setCustomId(`bj:hit:${gameId}:${ownerId}`)
             .setLabel(`${discord_1.ICON.hit} HIT`)
             .setStyle(discord_js_1.ButtonStyle.Primary),
         new discord_js_1.ButtonBuilder()
-            .setCustomId(`bj:stand:${gameId}`)
+            .setCustomId(`bj:stand:${gameId}:${ownerId}`)
             .setLabel(`${discord_1.ICON.stand} STAND`)
             .setStyle(discord_js_1.ButtonStyle.Success),
     ];
     if (canDouble) {
         btns.push(new discord_js_1.ButtonBuilder()
-            .setCustomId(`bj:double:${gameId}`)
+            .setCustomId(`bj:double:${gameId}:${ownerId}`)
             .setLabel(`${discord_1.ICON.double} DOUBLE`)
             .setStyle(discord_js_1.ButtonStyle.Secondary));
     }
     btns.push(new discord_js_1.ButtonBuilder()
-        .setCustomId(`bj:surrender:${gameId}`)
+        .setCustomId(`bj:surrender:${gameId}:${ownerId}`)
         .setLabel(`${discord_1.ICON.fold} FOLD`)
         .setStyle(discord_js_1.ButtonStyle.Danger));
     return new discord_js_1.ActionRowBuilder().addComponents(...btns.slice(0, 5));
@@ -150,6 +152,8 @@ exports.blackjackData = new discord_js_1.SlashCommandBuilder()
 //  COINFLIP — Quick Casino Game
 // ═══════════════════════════════════════════════════════════════════════════
 async function handleCoinflip(interaction, services) {
+    if (!(await (0, discord_1.enforceCasinoChannel)(interaction)))
+        return;
     const cd = (0, discord_1.checkCooldown)(interaction.user.id, 'coinflip', config_1.config.limits.gambleCooldownMs);
     if (cd) {
         await (0, discord_1.ephemeralReply)(interaction, `${discord_1.ICON.time} Slow down — wait **${cd}s** before flipping again.`);
@@ -188,6 +192,8 @@ async function handleCoinflip(interaction, services) {
 //  DICE — Target Number Game
 // ═══════════════════════════════════════════════════════════════════════════
 async function handleDice(interaction, services) {
+    if (!(await (0, discord_1.enforceCasinoChannel)(interaction)))
+        return;
     const cd = (0, discord_1.checkCooldown)(interaction.user.id, 'dice', config_1.config.limits.gambleCooldownMs);
     if (cd) {
         await (0, discord_1.ephemeralReply)(interaction, `${discord_1.ICON.time} Slow down — wait **${cd}s** before rolling again.`);
@@ -231,6 +237,8 @@ async function handleDice(interaction, services) {
 //  BLACKJACK — Premium Card Game
 // ═══════════════════════════════════════════════════════════════════════════
 async function handleBlackjack(interaction, services) {
+    if (!(await (0, discord_1.enforceCasinoChannel)(interaction)))
+        return;
     try {
         const bet = (0, math_1.parseAmount)(interaction.options.getString('bet', true));
         await services.user.ensureUser(interaction.user.id);
@@ -241,9 +249,9 @@ async function handleBlackjack(interaction, services) {
             ? { newBalance: balance }
             : undefined);
         const row = game.status === 'player_turn'
-            ? buildBlackjackButtons(game.gameId, game.canDouble)
+            ? buildBlackjackButtons(game.gameId, game.canDouble, interaction.user.id)
             : null;
-        await interaction.reply({ embeds: [embed], components: row ? [row] : [], flags: discord_js_1.MessageFlags.Ephemeral });
+        await interaction.reply({ embeds: [embed], components: row ? [row] : [] });
     }
     catch (err) {
         if (err instanceof EconomyService_1.InsufficientFundsError) {
@@ -257,9 +265,17 @@ async function handleBlackjack(interaction, services) {
 //  BLACKJACK BUTTON HANDLERS
 // ═══════════════════════════════════════════════════════════════════════════
 async function handleBlackjackButton(interaction, services) {
-    const [, action, gameId] = interaction.customId.split(':');
+    const [, action, gameId, ownerId] = interaction.customId.split(':');
     if (!action || !gameId)
         return;
+    // The game message is public — only the player who started it may act.
+    if (ownerId && ownerId !== interaction.user.id) {
+        await interaction.reply({
+            content: `${discord_1.ICON.cross} This isn't your blackjack game — start your own with \`/blackjack\`.`,
+            flags: discord_js_1.MessageFlags.Ephemeral,
+        });
+        return;
+    }
     try {
         if (action === 'hit') {
             const { playerHand, busted } = await services.gambling.hit(gameId, interaction.user.id);
@@ -273,7 +289,7 @@ async function handleBlackjackButton(interaction, services) {
             }
             const canDouble = game ? game.player_hand_json.length === 2 && !game.doubled : false;
             const embed = buildBlackjackEmbed(services, playerHand, game.dealer_hand_json, bet, false);
-            await interaction.update({ embeds: [embed], components: [buildBlackjackButtons(gameId, canDouble)] });
+            await interaction.update({ embeds: [embed], components: [buildBlackjackButtons(gameId, canDouble, interaction.user.id)] });
         }
         else if (action === 'stand') {
             const result = await services.gambling.stand(gameId, interaction.user.id);
