@@ -1,6 +1,7 @@
 import { Client, GatewayIntentBits, REST, Routes, Events, Interaction, ButtonInteraction, ModalSubmitInteraction, MessageFlags } from 'discord.js';
 import { config } from './config';
 import type { AppServices } from './types';
+import { prisma } from './lib/prisma';
 
 // Services
 import { EconomyService } from './services/EconomyService';
@@ -180,6 +181,14 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`[Bot] Logged in as ${c.user.tag}`);
+  // Warm the DB connection pool so the first command query doesn't risk the
+  // 3s Discord interaction timeout on a cold TLS handshake.
+  try {
+    await prisma.$connect();
+    console.log('[Bot] Database connection established.');
+  } catch (err) {
+    console.error('[Bot] Failed to connect to database:', err);
+  }
   try {
     await registerCommands(c);
   } catch (err) {

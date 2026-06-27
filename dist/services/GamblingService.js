@@ -5,8 +5,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GamblingService = void 0;
 const decimal_js_1 = __importDefault(require("decimal.js"));
+const prisma_1 = require("../lib/prisma");
+const wallet_1 = require("../lib/wallet");
 // ═══════════════════════════════════════════════════════════════════════════
-//  GAMBLING SERVICE
+//  GAMBLING SERVICE — real Route Cash stakes + payouts (user_balances/transactions)
+//
+//  Blackjack hand/deck state is held in memory for the duration of a hand
+//  (the bet is debited up-front and the payout credited on completion). A
+//  process restart mid-hand forfeits the in-progress hand's stake.
 // ═══════════════════════════════════════════════════════════════════════════
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const SUITS = ['H', 'D', 'C', 'S'];
@@ -32,7 +38,6 @@ function cardValue(rank) {
         return 11;
     return parseInt(rank, 10);
 }
-// In-memory blackjack store (replace with DB persistence)
 const games = new Map();
 class GamblingService {
     handValue(hand) {
@@ -50,53 +55,73 @@ class GamblingService {
         return total;
     }
     async coinflip(userId, amount, choice) {
-        void userId;
         const outcome = Math.random() < 0.5 ? 'heads' : 'tails';
         const won = outcome === choice;
         const payout = won ? amount.mul(2) : new decimal_js_1.default(0);
-        const net = won ? amount : amount;
-        return { won, outcome, payout, net };
+        await prisma_1.prisma.$transaction(async (tx) => {
+            await (0, wallet_1.adjustBalance)(tx, userId, amount.neg(), 'coinflip_bet', `Coinflip on ${choice}`);
+            if (won)
+                await (0, wallet_1.adjustBalance)(tx, userId, payout, 'coinflip_win', `Coinflip win (${outcome})`);
+        });
+        return { won, outcome, payout, net: amount };
     }
     async dice(userId, amount, target) {
-        void userId;
         const roll = Math.floor(Math.random() * 6) + 1;
         const isExact = roll === target;
         const adjacent = Math.abs(roll - target) === 1;
         const payout = isExact ? amount.mul(6) : adjacent ? amount.mul(2) : new decimal_js_1.default(0);
-        const net = isExact ? amount.mul(5) : adjacent ? amount : amount;
+        const net = isExact ? amount.mul(5) : amount;
+        await prisma_1.prisma.$transaction(async (tx) => {
+            await (0, wallet_1.adjustBalance)(tx, userId, amount.neg(), 'dice_bet', `Dice on ${target}`);
+            if (payout.gt(0))
+                await (0, wallet_1.adjustBalance)(tx, userId, payout, 'dice_win', `Dice win (rolled ${roll})`);
+        });
         return { roll, payout, net };
     }
     async startBlackjack(userId, bet) {
+        if (bet.lte(0))
+            throw new Error('Bet must be positive.');
+        await (0, wallet_1.ensureWallet)(userId);
+        // Take the stake up-front (throws InsufficientFundsError if they can't cover it).
+        await (0, wallet_1.adjustBalanceTx)(userId, bet.neg(), 'blackjack_bet', 'Blackjack bet');
         const deck = shuffle(newDeck());
         const player = [deck.pop(), deck.pop()];
         const dealer = [deck.pop(), deck.pop()];
         const gameId = `${userId}-${Date.now()}`;
-        const playerVal = this.handValue(player);
-        const status = playerVal === 21 ? 'completed' : 'player_turn';
-        games.set(gameId, {
-            game_id: gameId, user_id: userId, status,
-            player_hand_json: player, dealer_hand_json: dealer,
-            bet_amount: bet.toString(), doubled: false, deck,
-        });
+        const natural = this.handValue(player) === 21;
+        const status = natural ? 'completed' : 'player_turn';
+        const game = {
+            game_id: gameId,
+            user_id: userId,
+            status,
+            player_hand_json: player,
+            dealer_hand_json: dealer,
+            bet_amount: bet.toString(),
+            doubled: false,
+            deck,
+            bet,
+            settled: false,
+        };
+        games.set(gameId, game);
+        if (natural) {
+            // Natural blackjack pays 3:2 → return stake + 1.5x.
+            await this.credit(game, bet.mul(2.5), 'Blackjack (natural 21)');
+        }
         return { gameId, status, playerHand: player, dealerHand: dealer, canDouble: true };
     }
     async hit(gameId, userId) {
-        void userId;
-        const game = games.get(gameId);
-        if (!game)
-            throw new Error('Game not found.');
+        const game = this.requireGame(gameId, userId);
         game.player_hand_json.push(game.deck.pop());
         const busted = this.handValue(game.player_hand_json) > 21;
-        if (busted)
+        if (busted) {
             game.status = 'completed';
+            game.settled = true; // stake already lost
+        }
         return { playerHand: game.player_hand_json, busted };
     }
     async stand(gameId, userId) {
-        void userId;
-        const game = games.get(gameId);
-        if (!game)
-            throw new Error('Game not found.');
-        const bet = new decimal_js_1.default(game.bet_amount);
+        const game = this.requireGame(gameId, userId);
+        const totalStake = game.doubled ? game.bet.mul(2) : game.bet;
         while (this.handValue(game.dealer_hand_json) < 17) {
             game.dealer_hand_json.push(game.deck.pop());
         }
@@ -106,47 +131,75 @@ class GamblingService {
         let payout;
         if (dv > 21 || pv > dv) {
             result = 'win';
-            payout = bet.mul(2);
+            payout = totalStake.mul(2);
         }
         else if (pv === dv) {
             result = 'push';
-            payout = bet;
+            payout = totalStake;
         }
         else {
             result = 'loss';
             payout = new decimal_js_1.default(0);
         }
         game.status = 'completed';
+        await this.credit(game, payout, `Blackjack ${result}`);
         return { playerHand: game.player_hand_json, dealerHand: game.dealer_hand_json, result, payout };
     }
     async doubleDown(gameId, userId) {
-        const game = games.get(gameId);
-        if (!game)
-            throw new Error('Game not found.');
-        game.player_hand_json.push(game.deck.pop());
+        const game = this.requireGame(gameId, userId);
+        // Double the stake — take a second bet (throws if insufficient).
+        await (0, wallet_1.adjustBalanceTx)(userId, game.bet.neg(), 'blackjack_double', 'Blackjack double down');
         game.doubled = true;
-        const busted = this.handValue(game.player_hand_json) > 21;
-        if (busted) {
+        game.player_hand_json.push(game.deck.pop());
+        if (this.handValue(game.player_hand_json) > 21) {
             game.status = 'completed';
+            game.settled = true; // both stakes lost
             return { playerHand: game.player_hand_json, busted: true, result: 'bust', payout: new decimal_js_1.default(0) };
         }
         const stood = await this.stand(gameId, userId);
-        return { playerHand: stood.playerHand, dealerHand: stood.dealerHand, busted: false, result: stood.result, payout: stood.payout.mul(2) };
+        return {
+            playerHand: stood.playerHand,
+            dealerHand: stood.dealerHand,
+            busted: false,
+            result: stood.result,
+            payout: stood.payout,
+        };
     }
     async surrender(gameId, userId) {
-        void userId;
-        const game = games.get(gameId);
-        if (game)
-            game.status = 'completed';
+        const game = this.requireGame(gameId, userId);
+        game.status = 'completed';
+        // Return half the original stake.
+        await this.credit(game, game.bet.div(2), 'Blackjack surrender');
     }
     async getBlackjackGame(gameId, userId) {
-        void userId;
         const game = games.get(gameId);
-        if (!game)
+        if (!game || game.user_id !== userId)
             return null;
-        const { deck: _deck, ...row } = game;
-        void _deck;
-        return row;
+        return {
+            game_id: game.game_id,
+            user_id: game.user_id,
+            status: game.status,
+            player_hand_json: game.player_hand_json,
+            dealer_hand_json: game.dealer_hand_json,
+            bet_amount: game.bet_amount,
+            doubled: game.doubled,
+        };
+    }
+    // ── internal helpers ──────────────────────────────────────────────────────
+    requireGame(gameId, userId) {
+        const game = games.get(gameId);
+        if (!game || game.user_id !== userId)
+            throw new Error('Game not found.');
+        return game;
+    }
+    /** Credit a payout exactly once per game and mark it settled. */
+    async credit(game, payout, reason) {
+        if (game.settled)
+            return;
+        game.settled = true;
+        if (payout.gt(0)) {
+            await (0, wallet_1.adjustBalanceTx)(game.user_id, payout, 'blackjack_payout', reason);
+        }
     }
 }
 exports.GamblingService = GamblingService;

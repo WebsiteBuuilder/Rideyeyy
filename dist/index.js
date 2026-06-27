@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const discord_js_1 = require("discord.js");
 const config_1 = require("./config");
+const prisma_1 = require("./lib/prisma");
 // Services
 const EconomyService_1 = require("./services/EconomyService");
 const UserService_1 = require("./services/UserService");
@@ -237,6 +238,15 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
 // ═══════════════════════════════════════════════════════════════════════════
 client.once(discord_js_1.Events.ClientReady, async (c) => {
     console.log(`[Bot] Logged in as ${c.user.tag}`);
+    // Warm the DB connection pool so the first command query doesn't risk the
+    // 3s Discord interaction timeout on a cold TLS handshake.
+    try {
+        await prisma_1.prisma.$connect();
+        console.log('[Bot] Database connection established.');
+    }
+    catch (err) {
+        console.error('[Bot] Failed to connect to database:', err);
+    }
     try {
         await registerCommands(c);
     }

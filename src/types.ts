@@ -40,7 +40,7 @@ export interface BlackjackGameRow {
 }
 
 export interface TransactionRow {
-  id:         number;
+  id:         string;
   user_id:    string;
   amount:     string;
   type:       string;
