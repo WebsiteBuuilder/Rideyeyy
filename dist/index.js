@@ -62,6 +62,7 @@ const Admin = __importStar(require("./commands/inviteAdmin"));
 const Referral = __importStar(require("./commands/referral"));
 const Shop = __importStar(require("./commands/shop"));
 const VerifyPanel = __importStar(require("./commands/verifyPanel"));
+const Help = __importStar(require("./commands/help"));
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
 // ═══════════════════════════════════════════════════════════════════════════
@@ -132,6 +133,7 @@ async function registerCommands(client) {
         Shop.lotteryData,
         Admin.adminData,
         VerifyPanel.verifyPanelData,
+        Help.helpData,
     ].map((c) => c.toJSON());
     const rest = new discord_js_1.REST().setToken(config_1.config.token);
     if (config_1.config.guildId) {
@@ -205,6 +207,10 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             const select = interaction;
             if (select.customId === 'invadm:nav') {
                 await Admin.handleAdminSelect(select, services);
+                return;
+            }
+            if (select.customId === Help.HELP_NAV_ID) {
+                await Help.handleHelpSelect(select);
                 return;
             }
             return;
@@ -317,6 +323,9 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
                 break;
             case 'admin':
                 await Admin.handleAdmin(interaction, services);
+                break;
+            case 'help':
+                await Help.handleHelp(interaction);
                 break;
             default:
                 console.warn(`[Bot] Unknown command: ${interaction.commandName}`);

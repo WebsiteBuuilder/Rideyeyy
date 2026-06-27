@@ -30,6 +30,7 @@ import * as Admin from './commands/inviteAdmin';
 import * as Referral from './commands/referral';
 import * as Shop from './commands/shop';
 import * as VerifyPanel from './commands/verifyPanel';
+import * as Help from './commands/help';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
@@ -106,6 +107,7 @@ async function registerCommands(client: Client): Promise<void> {
     Shop.lotteryData,
     Admin.adminData,
     VerifyPanel.verifyPanelData,
+    Help.helpData,
   ].map((c) => c.toJSON());
 
   const rest = new REST().setToken(config.token);
@@ -186,6 +188,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         await Admin.handleAdminSelect(select, services);
         return;
       }
+      if (select.customId === Help.HELP_NAV_ID) {
+        await Help.handleHelpSelect(select);
+        return;
+      }
       return;
     }
 
@@ -243,6 +249,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       case 'redeem':       await Shop.handleRedeem(interaction, services);         break;
       case 'lottery':      await Shop.handleLottery(interaction, services);        break;
       case 'admin':        await Admin.handleAdmin(interaction, services);         break;
+      case 'help':         await Help.handleHelp(interaction);                     break;
       default:
         console.warn(`[Bot] Unknown command: ${interaction.commandName}`);
     }
