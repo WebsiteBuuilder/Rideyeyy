@@ -86,6 +86,17 @@ CREATE TABLE IF NOT EXISTS "Blacklist" (
     CONSTRAINT "Blacklist_pkey" PRIMARY KEY ("id")
 );
 
+CREATE TABLE IF NOT EXISTS "Panel" (
+    "id" TEXT NOT NULL,
+    "key" TEXT NOT NULL,
+    "content" TEXT NOT NULL,
+    "channelId" TEXT,
+    "messageId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "Panel_pkey" PRIMARY KEY ("id")
+);
+
 -- Additive column migrations (idempotent)
 ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "preferredName" TEXT;
 
@@ -105,6 +116,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Vouch_bookingId_key" ON "Vouch"("bookingId");
 CREATE INDEX IF NOT EXISTS "Vouch_providerId_idx" ON "Vouch"("providerId");
 CREATE UNIQUE INDEX IF NOT EXISTS "Blacklist_discordId_key" ON "Blacklist"("discordId");
 CREATE INDEX IF NOT EXISTS "Blacklist_discordId_idx" ON "Blacklist"("discordId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Panel_key_key" ON "Panel"("key");
+CREATE INDEX IF NOT EXISTS "Panel_key_idx" ON "Panel"("key");
 
 -- Foreign keys (ADD CONSTRAINT has no IF NOT EXISTS, so guard against duplicate_object)
 DO $$ BEGIN

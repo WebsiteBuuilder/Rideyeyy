@@ -1,9 +1,7 @@
 import {
   ActionRowBuilder,
   AttachmentBuilder,
-  ButtonBuilder,
   ButtonInteraction,
-  ButtonStyle,
   ChannelType,
   ChatInputCommandInteraction,
   Client,
@@ -23,17 +21,19 @@ import Decimal from 'decimal.js';
 import { config } from '../config';
 import type { AppServices } from '../types';
 import {
-  actionButton,
   checkCooldown,
   ephemeralReply,
   hasProviderRole,
   hasStaffRole,
-  memberFromInteraction,
 } from '../utils/discord';
 import {
   bookingChannelName,
   buildBookingActionRow,
   buildBookingEmbed,
+  buildServicePromptEmbed,
+  buildServiceRow,
+  buildVehiclePromptEmbed,
+  buildVehicleRow,
 } from '../utils/bookingEmbeds';
 import { triggerReviewFlow, handleReviewRating } from '../utils/reviewFlow';
 
@@ -89,7 +89,7 @@ function detailsModal(): ModalBuilder {
 }
 
 async function runBookPreflight(
-  interaction: ChatInputCommandInteraction,
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
   services: AppServices
 ): Promise<boolean> {
   if (!interaction.inGuild()) {
@@ -114,22 +114,29 @@ async function runBookPreflight(
   return true;
 }
 
-export async function execute(
-  interaction: ChatInputCommandInteraction,
+/**
+ * Shared booking entry point. Works from both the `/book` slash command and the
+ * persistent "Book Now" button posted in the order-here channel.
+ */
+export async function startBooking(
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
   services: AppServices
 ): Promise<void> {
   // Acknowledge immediately so the DB-backed preflight checks below can never
   // blow past Discord's 3s interaction window ("application did not respond").
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   if (!(await runBookPreflight(interaction, services))) return;
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    actionButton('gudhrides-book:service:RIDE', 'Ride', ButtonStyle.Primary),
-    actionButton('gudhrides-book:service:COURIER', 'Courier Delivery', ButtonStyle.Secondary)
-  );
   await interaction.editReply({
-    content: 'Select a **service type** to begin your booking:',
-    components: [row],
+    embeds: [buildServicePromptEmbed()],
+    components: [buildServiceRow()],
   });
+}
+
+export async function execute(
+  interaction: ChatInputCommandInteraction,
+  services: AppServices
+): Promise<void> {
+  await startBooking(interaction, services);
 }
 
 export async function handleBookButton(
@@ -141,6 +148,12 @@ export async function handleBookButton(
   const step = parts[1];
   const value = parts[2];
 
+  // Persistent "Book Now" button in #order-here.
+  if (step === 'start') {
+    await startBooking(interaction, services);
+    return;
+  }
+
   if (step === 'service') {
     const serviceType = value as ServiceType;
     services.booking.setDraft(interaction.user.id, { serviceType });
@@ -148,14 +161,9 @@ export async function handleBookButton(
       await interaction.showModal(detailsModal());
       return;
     }
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      actionButton('gudhrides-book:vehicle:REGULAR', 'Regular', ButtonStyle.Secondary),
-      actionButton('gudhrides-book:vehicle:COMFORT', 'Comfort', ButtonStyle.Primary),
-      actionButton('gudhrides-book:vehicle:XL', 'XL', ButtonStyle.Success)
-    );
     await interaction.update({
-      content: 'Select a **vehicle type**:',
-      components: [row],
+      embeds: [buildVehiclePromptEmbed()],
+      components: [buildVehicleRow()],
     });
     return;
   }

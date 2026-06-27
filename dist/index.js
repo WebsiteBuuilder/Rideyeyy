@@ -52,6 +52,7 @@ const Book = __importStar(require("./commands/book"));
 const ProviderStats = __importStar(require("./commands/provider-stats"));
 const ProviderLeaderboard = __importStar(require("./commands/provider-leaderboard"));
 const Blacklist = __importStar(require("./commands/blacklist"));
+const Panels = __importStar(require("./commands/panels"));
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
 // ═══════════════════════════════════════════════════════════════════════════
@@ -94,6 +95,9 @@ async function registerCommands(client) {
         ProviderStats.data,
         ProviderLeaderboard.data,
         Blacklist.data,
+        Panels.inviteData,
+        Panels.howtoData,
+        Panels.orderPanelData,
     ].map((c) => c.toJSON());
     const rest = new discord_js_1.REST().setToken(config_1.config.token);
     if (config_1.config.guildId) {
@@ -153,6 +157,10 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
                 await Book.handleBookModal(modal, services);
                 return;
             }
+            if (modal.customId.startsWith('panel-edit:')) {
+                await Panels.handlePanelModal(modal);
+                return;
+            }
             return;
         }
         // ── Slash commands ───────────────────────────────────────────────────
@@ -209,6 +217,15 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
                 break;
             case 'blacklist':
                 await Blacklist.handleBlacklist(interaction, services);
+                break;
+            case 'invite':
+                await Panels.handleInvite(interaction);
+                break;
+            case 'howto':
+                await Panels.handleHowto(interaction);
+                break;
+            case 'orderpanel':
+                await Panels.handleOrderPanel(interaction);
                 break;
             default:
                 console.warn(`[Bot] Unknown command: ${interaction.commandName}`);

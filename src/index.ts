@@ -20,6 +20,7 @@ import * as Book from './commands/book';
 import * as ProviderStats from './commands/provider-stats';
 import * as ProviderLeaderboard from './commands/provider-leaderboard';
 import * as Blacklist from './commands/blacklist';
+import * as Panels from './commands/panels';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
@@ -67,6 +68,9 @@ async function registerCommands(client: Client): Promise<void> {
     ProviderStats.data,
     ProviderLeaderboard.data,
     Blacklist.data,
+    Panels.inviteData,
+    Panels.howtoData,
+    Panels.orderPanelData,
   ].map((c) => c.toJSON());
 
   const rest = new REST().setToken(config.token);
@@ -131,6 +135,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         await Book.handleBookModal(modal, services);
         return;
       }
+      if (modal.customId.startsWith('panel-edit:')) {
+        await Panels.handlePanelModal(modal);
+        return;
+      }
       return;
     }
 
@@ -155,6 +163,9 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       case 'provider-stats': await ProviderStats.handleProviderStats(interaction, services); break;
       case 'provider-leaderboard': await ProviderLeaderboard.handleProviderLeaderboard(interaction, services); break;
       case 'blacklist':    await Blacklist.handleBlacklist(interaction, services); break;
+      case 'invite':       await Panels.handleInvite(interaction);                 break;
+      case 'howto':        await Panels.handleHowto(interaction);                  break;
+      case 'orderpanel':   await Panels.handleOrderPanel(interaction);            break;
       default:
         console.warn(`[Bot] Unknown command: ${interaction.commandName}`);
     }

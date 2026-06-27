@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.data = exports.DETAILS_MODAL = void 0;
+exports.startBooking = startBooking;
 exports.execute = execute;
 exports.handleBookButton = handleBookButton;
 exports.handleBookModal = handleBookModal;
@@ -72,23 +73,34 @@ async function runBookPreflight(interaction, services) {
     }
     return true;
 }
-async function execute(interaction, services) {
+/**
+ * Shared booking entry point. Works from both the `/book` slash command and the
+ * persistent "Book Now" button posted in the order-here channel.
+ */
+async function startBooking(interaction, services) {
     // Acknowledge immediately so the DB-backed preflight checks below can never
     // blow past Discord's 3s interaction window ("application did not respond").
     await interaction.deferReply({ flags: discord_js_1.MessageFlags.Ephemeral });
     if (!(await runBookPreflight(interaction, services)))
         return;
-    const row = new discord_js_1.ActionRowBuilder().addComponents((0, discord_1.actionButton)('gudhrides-book:service:RIDE', 'Ride', discord_js_1.ButtonStyle.Primary), (0, discord_1.actionButton)('gudhrides-book:service:COURIER', 'Courier Delivery', discord_js_1.ButtonStyle.Secondary));
     await interaction.editReply({
-        content: 'Select a **service type** to begin your booking:',
-        components: [row],
+        embeds: [(0, bookingEmbeds_1.buildServicePromptEmbed)()],
+        components: [(0, bookingEmbeds_1.buildServiceRow)()],
     });
+}
+async function execute(interaction, services) {
+    await startBooking(interaction, services);
 }
 async function handleBookButton(interaction, services) {
     // customId format: "gudhrides-book:<step>:<value>" (e.g. gudhrides-book:service:RIDE)
     const parts = interaction.customId.split(':');
     const step = parts[1];
     const value = parts[2];
+    // Persistent "Book Now" button in #order-here.
+    if (step === 'start') {
+        await startBooking(interaction, services);
+        return;
+    }
     if (step === 'service') {
         const serviceType = value;
         services.booking.setDraft(interaction.user.id, { serviceType });
@@ -96,10 +108,9 @@ async function handleBookButton(interaction, services) {
             await interaction.showModal(detailsModal());
             return;
         }
-        const row = new discord_js_1.ActionRowBuilder().addComponents((0, discord_1.actionButton)('gudhrides-book:vehicle:REGULAR', 'Regular', discord_js_1.ButtonStyle.Secondary), (0, discord_1.actionButton)('gudhrides-book:vehicle:COMFORT', 'Comfort', discord_js_1.ButtonStyle.Primary), (0, discord_1.actionButton)('gudhrides-book:vehicle:XL', 'XL', discord_js_1.ButtonStyle.Success));
         await interaction.update({
-            content: 'Select a **vehicle type**:',
-            components: [row],
+            embeds: [(0, bookingEmbeds_1.buildVehiclePromptEmbed)()],
+            components: [(0, bookingEmbeds_1.buildVehicleRow)()],
         });
         return;
     }
