@@ -1,7 +1,7 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import type { AppServices } from '../types';
 import { buildProviderStatsEmbed } from '../utils/bookingEmbeds';
-import { ephemeralEmbed, hasProviderRole, memberFromInteraction } from '../utils/discord';
+import { ephemeralEmbed, ephemeralReply, hasProviderRole, memberFromInteraction } from '../utils/discord';
 
 export const data = new SlashCommandBuilder()
   .setName('provider-stats')
@@ -11,9 +11,10 @@ export async function handleProviderStats(
   interaction: ChatInputCommandInteraction,
   services: AppServices
 ): Promise<void> {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const member = memberFromInteraction(interaction);
   if (!member || !hasProviderRole(member)) {
-    await interaction.reply({ content: 'You must be a provider to use this command.', ephemeral: true });
+    await ephemeralReply(interaction, 'You must be a provider to use this command.');
     return;
   }
 

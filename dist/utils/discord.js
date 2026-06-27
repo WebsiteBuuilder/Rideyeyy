@@ -217,11 +217,14 @@ function resultEmbed(result, payout, balance, guild) {
 }
 async function ephemeralEmbed(interaction, embed) {
     try {
-        if (interaction.deferred || interaction.replied) {
-            await interaction.followUp({ embeds: [embed], ephemeral: true });
+        if (interaction.deferred) {
+            await interaction.editReply({ embeds: [embed] });
+        }
+        else if (interaction.replied) {
+            await interaction.followUp({ embeds: [embed], flags: discord_js_1.MessageFlags.Ephemeral });
         }
         else {
-            await interaction.reply({ embeds: [embed], ephemeral: true });
+            await interaction.reply({ embeds: [embed], flags: discord_js_1.MessageFlags.Ephemeral });
         }
     }
     catch (err) {
@@ -242,11 +245,14 @@ async function publicEmbed(interaction, embed) {
     }
 }
 async function ephemeralReply(interaction, content) {
-    if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({ content, ephemeral: true });
+    if (interaction.deferred) {
+        await interaction.editReply({ content });
+    }
+    else if (interaction.replied) {
+        await interaction.followUp({ content, flags: discord_js_1.MessageFlags.Ephemeral });
     }
     else {
-        await interaction.reply({ content, ephemeral: true });
+        await interaction.reply({ content, flags: discord_js_1.MessageFlags.Ephemeral });
     }
 }
 function actionButton(customId, label, style, disabled = false) {
@@ -263,7 +269,7 @@ function buildConfirmRow(customIdPrefix) {
 }
 async function waitForConfirmation(interaction, customIdPrefix, warningMessage) {
     const row = buildConfirmRow(customIdPrefix);
-    await interaction.reply({ content: warningMessage, components: [row], ephemeral: true });
+    await interaction.reply({ content: warningMessage, components: [row], flags: discord_js_1.MessageFlags.Ephemeral });
     return waitForButtonConfirmation(interaction, customIdPrefix);
 }
 async function waitForFollowUpConfirmation(interaction, customIdPrefix, warningMessage) {
@@ -271,7 +277,7 @@ async function waitForFollowUpConfirmation(interaction, customIdPrefix, warningM
     const followUpMessage = await interaction.followUp({
         content: warningMessage,
         components: [row],
-        ephemeral: true,
+        flags: discord_js_1.MessageFlags.Ephemeral,
     });
     try {
         const confirmation = await followUpMessage.awaitMessageComponent({

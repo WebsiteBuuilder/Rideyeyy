@@ -205,11 +205,14 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
         const msg = '`An error occurred. Please try again.`';
         try {
             if (interaction.isRepliable()) {
-                if (interaction.replied || interaction.deferred) {
-                    await interaction.followUp({ content: msg, ephemeral: true });
+                if (interaction.deferred) {
+                    await interaction.editReply({ content: msg });
+                }
+                else if (interaction.replied) {
+                    await interaction.followUp({ content: msg, flags: discord_js_1.MessageFlags.Ephemeral });
                 }
                 else {
-                    await interaction.reply({ content: msg, ephemeral: true });
+                    await interaction.reply({ content: msg, flags: discord_js_1.MessageFlags.Ephemeral });
                 }
             }
         }

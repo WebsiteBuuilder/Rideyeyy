@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import type { AppServices } from '../types';
 import { buildLeaderboardEmbed } from '../utils/bookingEmbeds';
 import { ephemeralEmbed } from '../utils/discord';
@@ -22,6 +22,7 @@ export async function handleProviderLeaderboard(
   interaction: ChatInputCommandInteraction,
   services: AppServices
 ): Promise<void> {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const sort = interaction.options.getString('sort', true);
   let title = 'Provider Leaderboard';
   let entries: Array<{ discordId: string; value: string }> = [];

@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, REST, Routes, Events, Interaction, ButtonInteraction, ModalSubmitInteraction } from 'discord.js';
+import { Client, GatewayIntentBits, REST, Routes, Events, Interaction, ButtonInteraction, ModalSubmitInteraction, MessageFlags } from 'discord.js';
 import { config } from './config';
 import type { AppServices } from './types';
 
@@ -150,10 +150,12 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     const msg = '`An error occurred. Please try again.`';
     try {
       if (interaction.isRepliable()) {
-        if (interaction.replied || interaction.deferred) {
-          await interaction.followUp({ content: msg, ephemeral: true });
+        if (interaction.deferred) {
+          await interaction.editReply({ content: msg });
+        } else if (interaction.replied) {
+          await interaction.followUp({ content: msg, flags: MessageFlags.Ephemeral });
         } else {
-          await interaction.reply({ content: msg, ephemeral: true });
+          await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
         }
       }
     } catch { /* ignore reply errors */ }

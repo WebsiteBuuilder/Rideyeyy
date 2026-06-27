@@ -73,13 +73,15 @@ async function runBookPreflight(interaction, services) {
     return true;
 }
 async function execute(interaction, services) {
+    // Acknowledge immediately so the DB-backed preflight checks below can never
+    // blow past Discord's 3s interaction window ("application did not respond").
+    await interaction.deferReply({ flags: discord_js_1.MessageFlags.Ephemeral });
     if (!(await runBookPreflight(interaction, services)))
         return;
     const row = new discord_js_1.ActionRowBuilder().addComponents((0, discord_1.actionButton)('gudhrides-book:service:RIDE', 'Ride', discord_js_1.ButtonStyle.Primary), (0, discord_1.actionButton)('gudhrides-book:service:COURIER', 'Courier Delivery', discord_js_1.ButtonStyle.Secondary));
-    await interaction.reply({
+    await interaction.editReply({
         content: 'Select a **service type** to begin your booking:',
         components: [row],
-        ephemeral: true,
     });
 }
 async function handleBookButton(interaction, services) {
@@ -116,6 +118,9 @@ async function handleBookButton(interaction, services) {
 async function handleBookModal(interaction, services) {
     if (interaction.customId !== exports.DETAILS_MODAL)
         return;
+    // Acknowledge immediately; booking creation performs several DB round-trips
+    // that can otherwise exceed Discord's 3s window.
+    await interaction.deferReply({ flags: discord_js_1.MessageFlags.Ephemeral });
     const userId = interaction.user.id;
     const draft = services.booking.getDraft(userId);
     if (!draft?.serviceType) {
@@ -147,9 +152,8 @@ async function handleBookModal(interaction, services) {
             price,
             notes,
         });
-        await interaction.reply({
+        await interaction.editReply({
             content: `Booking **${booking.bookingNumber}** created successfully!`,
-            ephemeral: true,
         });
         await createTicketChannel(interaction.client, interaction.guildId, booking, services);
     }
@@ -231,6 +235,8 @@ async function handleBookingActionButton(interaction, services) {
     const [, action, bookingNumber] = interaction.customId.split(':');
     if (!action || !bookingNumber)
         return;
+    // Acknowledge immediately; claim/complete/cancel each run multiple DB ops.
+    await interaction.deferReply({ flags: discord_js_1.MessageFlags.Ephemeral });
     const booking = await services.booking.getByBookingNumber(bookingNumber);
     if (!booking) {
         await (0, discord_1.ephemeralReply)(interaction, 'Booking not found.');
@@ -302,11 +308,14 @@ async function handleReviewButton(interaction, services) {
     const rating = Number(parts[4]);
     if (!bookingNumber || rating < 1 || rating > 5)
         return;
+    // Acknowledge the component immediately; rating persistence + stats updates
+    // run several DB ops before we edit the message.
+    await interaction.deferUpdate();
     const booking = await services.booking.getByBookingNumber(bookingNumber);
     if (!booking || booking.customerId !== interaction.user.id) {
-        await (0, discord_1.ephemeralReply)(interaction, 'You cannot rate this booking.');
+        await interaction.followUp({ content: 'You cannot rate this booking.' });
         return;
     }
     const result = await (0, reviewFlow_1.handleReviewRating)(bookingNumber, rating, services, interaction.client);
-    await interaction.update({ content: result.message, components: [] });
+    await interaction.editReply({ content: result.message, components: [] });
 }

@@ -7,6 +7,7 @@ import {
   ChatInputCommandInteraction,
   Client,
   GuildMember,
+  MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
   OverwriteType,
@@ -116,15 +117,17 @@ export async function execute(
   interaction: ChatInputCommandInteraction,
   services: AppServices
 ): Promise<void> {
+  // Acknowledge immediately so the DB-backed preflight checks below can never
+  // blow past Discord's 3s interaction window ("application did not respond").
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   if (!(await runBookPreflight(interaction, services))) return;
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     actionButton('gudhrides-book:service:RIDE', 'Ride', ButtonStyle.Primary),
     actionButton('gudhrides-book:service:COURIER', 'Courier Delivery', ButtonStyle.Secondary)
   );
-  await interaction.reply({
+  await interaction.editReply({
     content: 'Select a **service type** to begin your booking:',
     components: [row],
-    ephemeral: true,
   });
 }
 
@@ -175,6 +178,10 @@ export async function handleBookModal(
 ): Promise<void> {
   if (interaction.customId !== DETAILS_MODAL) return;
 
+  // Acknowledge immediately; booking creation performs several DB round-trips
+  // that can otherwise exceed Discord's 3s window.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   const userId = interaction.user.id;
   const draft = services.booking.getDraft(userId);
   if (!draft?.serviceType) {
@@ -209,9 +216,8 @@ export async function handleBookModal(
       price,
       notes,
     });
-    await interaction.reply({
+    await interaction.editReply({
       content: `Booking **${booking.bookingNumber}** created successfully!`,
-      ephemeral: true,
     });
     await createTicketChannel(interaction.client, interaction.guildId!, booking, services);
   } catch (err) {
@@ -306,6 +312,9 @@ export async function handleBookingActionButton(
   const [, action, bookingNumber] = interaction.customId.split(':');
   if (!action || !bookingNumber) return;
 
+  // Acknowledge immediately; claim/complete/cancel each run multiple DB ops.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   const booking = await services.booking.getByBookingNumber(bookingNumber);
   if (!booking) {
     await ephemeralReply(interaction, 'Booking not found.');
@@ -389,12 +398,16 @@ export async function handleReviewButton(
   const rating = Number(parts[4]);
   if (!bookingNumber || rating < 1 || rating > 5) return;
 
+  // Acknowledge the component immediately; rating persistence + stats updates
+  // run several DB ops before we edit the message.
+  await interaction.deferUpdate();
+
   const booking = await services.booking.getByBookingNumber(bookingNumber);
   if (!booking || booking.customerId !== interaction.user.id) {
-    await ephemeralReply(interaction, 'You cannot rate this booking.');
+    await interaction.followUp({ content: 'You cannot rate this booking.' });
     return;
   }
 
   const result = await handleReviewRating(bookingNumber, rating, services, interaction.client);
-  await interaction.update({ content: result.message, components: [] });
+  await interaction.editReply({ content: result.message, components: [] });
 }

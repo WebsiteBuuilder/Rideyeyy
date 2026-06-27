@@ -9,6 +9,7 @@ import {
   Guild,
   GuildMember,
   MessageComponentInteraction,
+  MessageFlags,
   ModalSubmitInteraction,
   SlashCommandBuilder,
 } from 'discord.js';
@@ -233,10 +234,12 @@ export async function ephemeralEmbed(
   embed: EmbedBuilder
 ): Promise<void> {
   try {
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({ embeds: [embed], ephemeral: true });
+    if (interaction.deferred) {
+      await interaction.editReply({ embeds: [embed] });
+    } else if (interaction.replied) {
+      await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
     } else {
-      await interaction.reply({ embeds: [embed], ephemeral: true });
+      await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
   } catch (err) {
     console.error('[v0] ephemeralEmbed error:', err);
@@ -262,10 +265,12 @@ export async function ephemeralReply(
   interaction: ChatInputCommandInteraction | MessageComponentInteraction | ModalSubmitInteraction,
   content: string
 ): Promise<void> {
-  if (interaction.replied || interaction.deferred) {
-    await interaction.followUp({ content, ephemeral: true });
+  if (interaction.deferred) {
+    await interaction.editReply({ content });
+  } else if (interaction.replied) {
+    await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
   } else {
-    await interaction.reply({ content, ephemeral: true });
+    await interaction.reply({ content, flags: MessageFlags.Ephemeral });
   }
 }
 
@@ -301,7 +306,7 @@ export async function waitForConfirmation(
   warningMessage: string
 ): Promise<boolean> {
   const row = buildConfirmRow(customIdPrefix);
-  await interaction.reply({ content: warningMessage, components: [row], ephemeral: true });
+  await interaction.reply({ content: warningMessage, components: [row], flags: MessageFlags.Ephemeral });
   return waitForButtonConfirmation(interaction, customIdPrefix);
 }
 
@@ -314,7 +319,7 @@ export async function waitForFollowUpConfirmation(
   const followUpMessage = await interaction.followUp({
     content: warningMessage,
     components: [row],
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
   try {
     const confirmation = await followUpMessage.awaitMessageComponent({

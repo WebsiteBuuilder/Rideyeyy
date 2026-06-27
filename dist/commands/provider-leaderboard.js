@@ -14,6 +14,7 @@ exports.data = new discord_js_1.SlashCommandBuilder()
     .setRequired(true)
     .addChoices({ name: 'Completed Jobs', value: 'completed' }, { name: 'Revenue', value: 'revenue' }, { name: 'Average Rating', value: 'rating' }));
 async function handleProviderLeaderboard(interaction, services) {
+    await interaction.deferReply({ flags: discord_js_1.MessageFlags.Ephemeral });
     const sort = interaction.options.getString('sort', true);
     let title = 'Provider Leaderboard';
     let entries = [];

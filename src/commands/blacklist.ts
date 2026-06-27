@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import type { AppServices } from '../types';
 import { ephemeralReply, hasStaffRole, memberFromInteraction } from '../utils/discord';
 
@@ -23,6 +23,7 @@ export async function handleBlacklist(
   interaction: ChatInputCommandInteraction,
   services: AppServices
 ): Promise<void> {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const member = memberFromInteraction(interaction);
   if (!member || !hasStaffRole(member)) {
     await ephemeralReply(interaction, 'Only staff can manage the blacklist.');

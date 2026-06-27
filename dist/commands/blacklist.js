@@ -17,6 +17,7 @@ exports.data = new discord_js_1.SlashCommandBuilder()
     .setDescription('Remove a user from the booking blacklist')
     .addUserOption((o) => o.setName('user').setDescription('User to unblacklist').setRequired(true)));
 async function handleBlacklist(interaction, services) {
+    await interaction.deferReply({ flags: discord_js_1.MessageFlags.Ephemeral });
     const member = (0, discord_1.memberFromInteraction)(interaction);
     if (!member || !(0, discord_1.hasStaffRole)(member)) {
         await (0, discord_1.ephemeralReply)(interaction, 'Only staff can manage the blacklist.');

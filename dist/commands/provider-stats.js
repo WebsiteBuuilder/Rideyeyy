@@ -9,9 +9,10 @@ exports.data = new discord_js_1.SlashCommandBuilder()
     .setName('provider-stats')
     .setDescription('View your provider statistics');
 async function handleProviderStats(interaction, services) {
+    await interaction.deferReply({ flags: discord_js_1.MessageFlags.Ephemeral });
     const member = (0, discord_1.memberFromInteraction)(interaction);
     if (!member || !(0, discord_1.hasProviderRole)(member)) {
-        await interaction.reply({ content: 'You must be a provider to use this command.', ephemeral: true });
+        await (0, discord_1.ephemeralReply)(interaction, 'You must be a provider to use this command.');
         return;
     }
     const stats = await services.providerStats.getProviderStats(interaction.user.id);
