@@ -8,6 +8,9 @@ const prisma_1 = require("../../lib/prisma");
 // ═══════════════════════════════════════════════════════════════════════════
 const DAY_MS = 24 * 60 * 60 * 1000;
 class InviteVerificationService {
+    constructor(activity) {
+        this.activity = activity;
+    }
     /** Checks run the moment a member joins. */
     async immediateCheck(member, inviterId, config) {
         if (member.user.bot)
@@ -48,6 +51,14 @@ class InviteVerificationService {
         }
         if (await this.wasBanned(guild, userId)) {
             return { ok: false, reason: 'BAN_EVASION' };
+        }
+        // Minimum message engagement: a present member who hasn't chatted enough is
+        // deferred (not marked fake) so they can still qualify by participating.
+        if (config.minMessages > 0) {
+            const messages = await this.activity.getMessageCount(guild.id, userId);
+            if (messages < config.minMessages) {
+                return { ok: false, defer: true };
+            }
         }
         return { ok: true };
     }

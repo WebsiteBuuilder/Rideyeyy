@@ -166,6 +166,8 @@ model InviteConfig {
   rewardAmount         Int      @default(250)
   verificationDelaySec Int      @default(600)
   minAccountAgeDays    Int      @default(7)
+  minMessages          Int      @default(0)
+  maxVerifyAttempts    Int      @default(6)
   dailyCap             Int      @default(0)
   weeklyCap            Int      @default(0)
   monthlyCap           Int      @default(0)
@@ -173,8 +175,18 @@ model InviteConfig {
   antiAltEnabled       Boolean  @default(true)
   rewardEnabled        Boolean  @default(true)
   milestonesEnabled    Boolean  @default(true)
+  lotteryEnabled       Boolean  @default(true)
+  shopEnabled          Boolean  @default(true)
+  weeklyResetEnabled   Boolean  @default(true)
+  monthlyResetEnabled  Boolean  @default(true)
+  ticketsPerDaily      Int      @default(1)
+  ticketsPerInvite     Int      @default(5)
+  ticketsPerRide       Int      @default(10)
+  ticketsPerEvent      Int      @default(1)
+  lotteryPrizeKey      String   @default("RIDE_FREE_20")
   loggingChannelId     String?
   announceChannelId    String?
+  lotteryChannelId     String?
   autoAnnounce         Boolean  @default(true)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
@@ -213,6 +225,7 @@ model InviteJoin {
   rewarded         Boolean           @default(false)
   rewardAmount     Int?
   rewardTxnRef     String?
+  verifyAttempts   Int               @default(0)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
@@ -258,15 +271,17 @@ model InviteReward {
 }
 
 model InviteMilestone {
-  id           String   @id @default(cuid())
-  guildId      String
-  threshold    Int
-  rewardAmount Int      @default(0)
-  rewardRoleId String?
-  label        String?
-  enabled      Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(cuid())
+  guildId       String
+  threshold     Int
+  rewardAmount  Int      @default(0)
+  rewardRoleId  String?
+  rewardRideKey String?
+  rewardTickets Int      @default(0)
+  label         String?
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@unique([guildId, threshold])
   @@index([guildId])
@@ -306,5 +321,101 @@ model InviteResetHistory {
   detail      String?
   createdAt   DateTime @default(now())
 
+  @@index([guildId])
+}
+
+// ───────────────────────── Referral Economy Expansion ───────────────────────
+
+enum RedemptionSource {
+  SHOP
+  MILESTONE
+  LOTTERY
+  MANUAL
+}
+
+enum RedemptionStatus {
+  ACTIVE
+  REDEEMED
+  VOID
+}
+
+model Redemption {
+  id         String           @id @default(cuid())
+  guildId    String
+  userId     String
+  rewardKey  String
+  code       String           @unique
+  source     RedemptionSource @default(SHOP)
+  status     RedemptionStatus @default(ACTIVE)
+  costRc     Decimal?         @db.Decimal(18, 2)
+  redeemedBy String?
+  redeemedAt DateTime?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@index([guildId, userId])
+  @@index([guildId, status])
+}
+
+model ShopItem {
+  id        String   @id @default(cuid())
+  guildId   String
+  key       String
+  label     String
+  priceRc   Int
+  rewardKey String
+  enabled   Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([guildId, key])
+  @@index([guildId])
+}
+
+model LotteryTicket {
+  id        String   @id @default(cuid())
+  guildId   String
+  userId    String
+  tickets   Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([guildId, userId])
+  @@index([guildId])
+}
+
+model LotteryDraw {
+  id             String   @id @default(cuid())
+  guildId        String
+  winnerUserId   String?
+  totalTickets   Int      @default(0)
+  participants   Int      @default(0)
+  prizeKey       String
+  redemptionCode String?
+  drawnAt        DateTime @default(now())
+
+  @@index([guildId, drawnAt])
+}
+
+model ScheduleState {
+  id        String   @id @default(cuid())
+  guildId   String
+  key       String
+  lastRunAt DateTime?
+  updatedAt DateTime @updatedAt
+
+  @@unique([guildId, key])
+  @@index([guildId])
+}
+
+model InviteActivity {
+  id            String    @id @default(cuid())
+  guildId       String
+  userId        String
+  messageCount  Int       @default(0)
+  lastMessageAt DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([guildId, userId])
   @@index([guildId])
 }

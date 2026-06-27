@@ -22,13 +22,17 @@ import { prisma } from '../lib/prisma';
 import { COLOR, BRAND, ICON, LINE, brandedEmbed, ephemeralReply } from '../utils/discord';
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  /invite-admin — full configuration & management panel (Administrator only)
+//  /admin economy — unified referral-economy configuration & management panel
+//  (Administrator only). Covers invites, milestones, lottery, shop, and more.
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const inviteAdminData = new SlashCommandBuilder()
-  .setName('invite-admin')
-  .setDescription('Configure and manage the invite reward system (admin only)')
-  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
+export const adminData = new SlashCommandBuilder()
+  .setName('admin')
+  .setDescription('GUHD RIDES administration')
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+  .addSubcommand((sub) =>
+    sub.setName('economy').setDescription('Configure invites, milestones, lottery, and the reward shop')
+  );
 
 type Section =
   | 'overview'
@@ -36,6 +40,8 @@ type Section =
   | 'rewards'
   | 'verification'
   | 'milestones'
+  | 'lottery'
+  | 'shop'
   | 'statistics'
   | 'reset'
   | 'logs'
@@ -46,10 +52,12 @@ type Section =
 
 const SECTIONS: { value: Section; label: string; description: string; emoji: string }[] = [
   { value: 'overview', label: 'Overview', description: 'Current configuration summary', emoji: '🏠' },
-  { value: 'settings', label: 'General Settings', description: 'Toggles & channels', emoji: '⚙️' },
-  { value: 'rewards', label: 'Reward Settings', description: 'Amount & caps', emoji: '💰' },
-  { value: 'verification', label: 'Verification', description: 'Delay & anti-alt', emoji: '🛡️' },
-  { value: 'milestones', label: 'Milestones', description: 'Add / remove milestones', emoji: '🏆' },
+  { value: 'settings', label: 'General Settings', description: 'Module toggles & channels', emoji: '⚙️' },
+  { value: 'rewards', label: 'Invite Rewards', description: 'Amount & caps', emoji: '💰' },
+  { value: 'verification', label: 'Verification', description: 'Delay, age, messages, anti-alt', emoji: '🛡️' },
+  { value: 'milestones', label: 'Milestones', description: 'RC / role / ride / tickets', emoji: '🏆' },
+  { value: 'lottery', label: 'Lottery', description: 'Tickets, prize & draws', emoji: '🎟️' },
+  { value: 'shop', label: 'Reward Shop', description: 'Items & prices', emoji: '🛒' },
   { value: 'statistics', label: 'Statistics', description: 'Guild-wide analytics', emoji: '📊' },
   { value: 'leaderboard', label: 'Leaderboard', description: 'Top inviters', emoji: '🥇' },
   { value: 'logs', label: 'Logs', description: 'Recent events', emoji: '📜' },
@@ -67,7 +75,7 @@ function isAdmin(interaction: ChatInputCommandInteraction | ButtonInteraction | 
 
 // ── Entry point ─────────────────────────────────────────────────────────────
 
-export async function handleInviteAdmin(
+export async function handleAdmin(
   interaction: ChatInputCommandInteraction,
   services: AppServices
 ): Promise<void> {
@@ -159,6 +167,24 @@ export async function handleAdminButton(
     await interaction.followUp({ content: `Recomputed ${n} inviter aggregates.`, flags: MessageFlags.Ephemeral });
     return;
   }
+
+  // Manual lottery draw.
+  if (action === 'draw') {
+    await interaction.deferUpdate();
+    const cfg = await services.invite.admin.getConfig(guildId);
+    if (interaction.guild) {
+      const outcome = await services.lottery.drawWeekly(interaction.client, interaction.guild, cfg);
+      const view = await renderSection('lottery', guildId, services);
+      await interaction.editReply(view);
+      await interaction.followUp({
+        content: outcome.winnerUserId
+          ? `Draw complete — winner <@${outcome.winnerUserId}> (${outcome.totalTickets} tickets).`
+          : 'Draw complete — no entrants this period.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    return;
+  }
 }
 
 // ── Modals ──────────────────────────────────────────────────────────────────
@@ -201,8 +227,12 @@ export async function handleAdminModal(
       const data: Record<string, number> = {};
       const delaySec = num('delaySec');
       const minAge = num('minAge');
+      const minMsg = num('minMessages');
+      const maxAttempts = num('maxAttempts');
       if (delaySec != null) data.verificationDelaySec = Math.max(0, Math.round(delaySec));
       if (minAge != null) data.minAccountAgeDays = Math.max(0, Math.round(minAge));
+      if (minMsg != null) data.minMessages = Math.max(0, Math.round(minMsg));
+      if (maxAttempts != null) data.maxVerifyAttempts = Math.max(1, Math.round(maxAttempts));
       await services.invite.admin.updateConfig(guildId, data);
       await ephemeralReply(interaction, 'Verification settings updated.');
       return;
@@ -210,23 +240,74 @@ export async function handleAdminModal(
     case 'channels': {
       const logging = str('logging');
       const announce = str('announce');
+      const lottery = str('lottery');
       await services.invite.admin.updateConfig(guildId, {
         loggingChannelId: logging || null,
         announceChannelId: announce || null,
+        lotteryChannelId: lottery || null,
       });
       await ephemeralReply(interaction, 'Channels updated.');
+      return;
+    }
+    case 'lottery': {
+      const data: Record<string, number | string> = {};
+      const perDaily = num('perDaily');
+      const perInvite = num('perInvite');
+      const perRide = num('perRide');
+      const perEvent = num('perEvent');
+      const prize = str('prizeKey');
+      if (perDaily != null) data.ticketsPerDaily = Math.max(0, Math.round(perDaily));
+      if (perInvite != null) data.ticketsPerInvite = Math.max(0, Math.round(perInvite));
+      if (perRide != null) data.ticketsPerRide = Math.max(0, Math.round(perRide));
+      if (perEvent != null) data.ticketsPerEvent = Math.max(0, Math.round(perEvent));
+      if (prize) data.lotteryPrizeKey = prize;
+      await services.invite.admin.updateConfig(guildId, data);
+      await ephemeralReply(interaction, 'Lottery settings updated.');
+      return;
+    }
+    case 'shopadd': {
+      const key = str('key').toUpperCase();
+      const label = str('label');
+      const priceRc = num('priceRc');
+      const rewardKey = str('rewardKey').toUpperCase() || key;
+      if (!key || !label || priceRc == null || priceRc < 0) {
+        await ephemeralReply(interaction, 'Key, label, and a non-negative price are required.');
+        return;
+      }
+      await services.shop.upsertItem({ guildId, key, label, priceRc: Math.round(priceRc), rewardKey });
+      await ephemeralReply(interaction, `Shop item **${label}** saved (${Math.round(priceRc)} ${BRAND.ticker}).`);
+      return;
+    }
+    case 'shopremove': {
+      const key = str('key').toUpperCase();
+      if (!key) {
+        await ephemeralReply(interaction, 'Provide an item key to remove.');
+        return;
+      }
+      const ok = await services.shop.removeItem(guildId, key);
+      await ephemeralReply(interaction, ok ? `Removed shop item \`${key}\`.` : 'No item with that key.');
       return;
     }
     case 'milestoneadd': {
       const threshold = num('threshold');
       const rewardAmount = num('rewardAmount') ?? 0;
       const roleId = str('roleId') || null;
-      const label = str('label') || null;
+      const rideKey = str('rideKey').toUpperCase() || null;
+      const tickets = num('tickets') ?? 0;
       if (threshold == null || threshold <= 0) {
         await ephemeralReply(interaction, 'Threshold must be a positive number.');
         return;
       }
-      await services.invite.admin.addMilestone(guildId, Math.round(threshold), Math.max(0, Math.round(rewardAmount)), roleId, label);
+      const label = `Milestone ${Math.round(threshold)}`;
+      await services.invite.admin.addMilestone(
+        guildId,
+        Math.round(threshold),
+        Math.max(0, Math.round(rewardAmount)),
+        roleId,
+        label,
+        rideKey,
+        Math.max(0, Math.round(tickets))
+      );
       await ephemeralReply(interaction, `Milestone at **${Math.round(threshold)}** invites saved.`);
       return;
     }
@@ -396,21 +477,33 @@ async function renderSection(
     case 'settings': {
       embed = brandedEmbed(COLOR.INFO)
         .setTitle(`${ICON.coin} General Settings`)
-        .setDescription(LINE)
+        .setDescription(`${LINE}\nModule toggles, automatic resets, and announcement channels.`)
         .addFields(
-          { name: 'Rewards Enabled', value: onOff(cfg.rewardEnabled), inline: true },
-          { name: 'Milestones Enabled', value: onOff(cfg.milestonesEnabled), inline: true },
+          { name: 'Rewards', value: onOff(cfg.rewardEnabled), inline: true },
+          { name: 'Milestones', value: onOff(cfg.milestonesEnabled), inline: true },
+          { name: 'Lottery', value: onOff(cfg.lotteryEnabled), inline: true },
+          { name: 'Shop', value: onOff(cfg.shopEnabled), inline: true },
           { name: 'Anti-Alt', value: onOff(cfg.antiAltEnabled), inline: true },
           { name: 'Auto Announce', value: onOff(cfg.autoAnnounce), inline: true },
+          { name: 'Weekly Reset', value: onOff(cfg.weeklyResetEnabled), inline: true },
+          { name: 'Monthly Reset', value: onOff(cfg.monthlyResetEnabled), inline: true },
+          { name: '\u200b', value: '\u200b', inline: true },
           { name: 'Logging Channel', value: cfg.loggingChannelId ? `<#${cfg.loggingChannelId}>` : '—', inline: true },
-          { name: 'Announce Channel', value: cfg.announceChannelId ? `<#${cfg.announceChannelId}>` : '—', inline: true }
+          { name: 'Announce Channel', value: cfg.announceChannelId ? `<#${cfg.announceChannelId}>` : '—', inline: true },
+          { name: 'Lottery Channel', value: cfg.lotteryChannelId ? `<#${cfg.lotteryChannelId}>` : '—', inline: true }
         );
       rows.push(
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           toggleBtn('settings', 'rewardEnabled', 'Rewards'),
           toggleBtn('settings', 'milestonesEnabled', 'Milestones'),
+          toggleBtn('settings', 'lotteryEnabled', 'Lottery'),
+          toggleBtn('settings', 'shopEnabled', 'Shop')
+        ),
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
           toggleBtn('settings', 'antiAltEnabled', 'Anti-Alt'),
-          toggleBtn('settings', 'autoAnnounce', 'Announce')
+          toggleBtn('settings', 'autoAnnounce', 'Announce'),
+          toggleBtn('settings', 'weeklyResetEnabled', 'Weekly Reset'),
+          toggleBtn('settings', 'monthlyResetEnabled', 'Monthly Reset')
         ),
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           modalBtn('settings', 'channels', 'Set Channels', ButtonStyle.Secondary)
@@ -435,10 +528,12 @@ async function renderSection(
     case 'verification': {
       embed = brandedEmbed(COLOR.ELECTRIC)
         .setTitle(`${ICON.check} Verification`)
-        .setDescription(LINE)
+        .setDescription(`${LINE}\nA member under the minimum message count is re-checked each cycle (up to the attempt cap) before being marked fake.`)
         .addFields(
           { name: 'Verification Delay', value: `${cfg.verificationDelaySec}s (${Math.round(cfg.verificationDelaySec / 60)} min)`, inline: true },
           { name: 'Min Account Age', value: `${cfg.minAccountAgeDays} days`, inline: true },
+          { name: 'Min Messages', value: `${cfg.minMessages}`, inline: true },
+          { name: 'Max Verify Attempts', value: `${cfg.maxVerifyAttempts}`, inline: true },
           { name: 'Anti-Alt', value: onOff(cfg.antiAltEnabled), inline: true }
         );
       rows.push(
@@ -449,11 +544,67 @@ async function renderSection(
       );
       break;
     }
+    case 'lottery': {
+      const pot = await services.lottery.getPot(guildId);
+      const last = await services.lottery.lastDraw(guildId);
+      const lastLine = last
+        ? last.winnerUserId
+          ? `<@${last.winnerUserId}> won ${last.totalTickets} tickets on ${last.drawnAt.toISOString().slice(0, 10)}`
+          : `No winner on ${last.drawnAt.toISOString().slice(0, 10)}`
+        : '—';
+      embed = brandedEmbed(COLOR.JACKPOT)
+        .setTitle(`🎟️ Weekly Lottery`)
+        .setDescription(`${LINE}\nTickets accrue from the sources below and reset each draw.`)
+        .addFields(
+          { name: 'Status', value: onOff(cfg.lotteryEnabled), inline: true },
+          { name: 'Current Pot', value: `${pot.totalTickets} tickets · ${pot.participants} entrants`, inline: true },
+          { name: 'Prize', value: services.redemption.label(cfg.lotteryPrizeKey), inline: true },
+          { name: 'Per Daily', value: `${cfg.ticketsPerDaily}`, inline: true },
+          { name: 'Per Invite', value: `${cfg.ticketsPerInvite}`, inline: true },
+          { name: 'Per Ride', value: `${cfg.ticketsPerRide}`, inline: true },
+          { name: 'Per Event', value: `${cfg.ticketsPerEvent}`, inline: true },
+          { name: 'Last Draw', value: lastLine, inline: false }
+        );
+      rows.push(
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          modalBtn('lottery', 'lottery', 'Edit Lottery', ButtonStyle.Primary),
+          toggleBtn('lottery', 'lotteryEnabled', 'Toggle Lottery'),
+          actionBtn('lottery', 'draw', 'Draw Now', ButtonStyle.Danger)
+        )
+      );
+      break;
+    }
+    case 'shop': {
+      const items = await services.shop.listAll(guildId);
+      const list = items.length
+        ? items
+            .map((it) => `\`${it.key}\` — ${it.label} · ${ICON.coin} ${it.priceRc} ${BRAND.ticker}${it.enabled ? '' : ' _(disabled)_'}`)
+            .join('\n')
+        : '_No shop items configured._';
+      embed = brandedEmbed(COLOR.WIN)
+        .setTitle(`🛒 Reward Shop`)
+        .setDescription(`${LINE}\nStatus: ${onOff(cfg.shopEnabled)}\n\n${list}`);
+      rows.push(
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          modalBtn('shop', 'shopadd', 'Add / Edit Item', ButtonStyle.Success),
+          modalBtn('shop', 'shopremove', 'Remove Item', ButtonStyle.Danger),
+          toggleBtn('shop', 'shopEnabled', 'Toggle Shop')
+        )
+      );
+      break;
+    }
     case 'milestones': {
       const milestones = await services.invite.admin.listMilestones(guildId);
       const list = milestones.length
         ? milestones
-            .map((m) => `**${m.threshold}** — ${m.label ?? 'Milestone'} · ${ICON.coin} ${m.rewardAmount} ${BRAND.ticker}${m.rewardRoleId ? ` + <@&${m.rewardRoleId}>` : ''}${m.enabled ? '' : ' _(disabled)_'}`)
+            .map((m) => {
+              const parts: string[] = [];
+              if (m.rewardAmount > 0) parts.push(`${ICON.coin} ${m.rewardAmount} ${BRAND.ticker}`);
+              if (m.rewardRideKey) parts.push(services.redemption.label(m.rewardRideKey));
+              if (m.rewardRoleId) parts.push(`<@&${m.rewardRoleId}>`);
+              if (m.rewardTickets > 0) parts.push(`🎟️ ${m.rewardTickets}`);
+              return `**${m.threshold}** — ${m.label ?? 'Milestone'} · ${parts.join(' + ') || 'no reward'}${m.enabled ? '' : ' _(disabled)_'}`;
+            })
             .join('\n')
         : '_No milestones configured._';
       embed = brandedEmbed(COLOR.JACKPOT).setTitle(`${ICON.jackpot} Milestones`).setDescription(`${LINE}\n${list}`);
@@ -559,17 +710,20 @@ async function renderSection(
     case 'overview':
     default: {
       const s = await services.invite.stats.getGuildStats(guildId);
+      const pot = await services.lottery.getPot(guildId);
       embed = brandedEmbed(COLOR.EPIC)
-        .setTitle(`${BRAND.logo} Invite System — Admin`)
-        .setDescription(`${LINE}\nUse the menu below to configure and manage invites.`)
+        .setTitle(`${BRAND.logo} Referral Economy — Admin`)
+        .setDescription(`${LINE}\nUse the menu below to configure invites, milestones, the lottery, and the reward shop.`)
         .addFields(
-          { name: 'Status', value: `${onOff(cfg.rewardEnabled)} rewards · ${onOff(cfg.milestonesEnabled)} milestones`, inline: false },
+          { name: 'Modules', value: `${onOff(cfg.rewardEnabled)} rewards · ${onOff(cfg.milestonesEnabled)} milestones · ${onOff(cfg.lotteryEnabled)} lottery · ${onOff(cfg.shopEnabled)} shop`, inline: false },
           { name: 'Reward / Invite', value: `${cfg.rewardAmount} ${BRAND.ticker}`, inline: true },
           { name: 'Verify Delay', value: `${Math.round(cfg.verificationDelaySec / 60)} min`, inline: true },
-          { name: 'Min Age', value: `${cfg.minAccountAgeDays}d`, inline: true },
+          { name: 'Min Age / Msgs', value: `${cfg.minAccountAgeDays}d / ${cfg.minMessages}`, inline: true },
           { name: 'Verified', value: `${s.verified}`, inline: true },
           { name: 'Pending', value: `${s.pending}`, inline: true },
-          { name: 'Fake', value: `${s.fake}`, inline: true }
+          { name: 'Fake', value: `${s.fake}`, inline: true },
+          { name: 'Lottery Pot', value: `${pot.totalTickets} tickets`, inline: true },
+          { name: 'Prize', value: services.redemption.label(cfg.lotteryPrizeKey), inline: true }
         );
       break;
     }
@@ -636,21 +790,47 @@ async function openSectionModal(
     case 'verification':
       builder = new ModalBuilder().setCustomId('invadm:modal:verification').setTitle('Verification').addComponents(
         input('delaySec', 'Verification delay (seconds)', String(cfg.verificationDelaySec)),
-        input('minAge', 'Min account age (days)', String(cfg.minAccountAgeDays))
+        input('minAge', 'Min account age (days)', String(cfg.minAccountAgeDays)),
+        input('minMessages', 'Min messages (0 = off)', String(cfg.minMessages)),
+        input('maxAttempts', 'Max verify attempts', String(cfg.maxVerifyAttempts))
       );
       break;
     case 'channels':
       builder = new ModalBuilder().setCustomId('invadm:modal:channels').setTitle('Channels').addComponents(
         input('logging', 'Logging channel ID (blank = off)', cfg.loggingChannelId ?? ''),
-        input('announce', 'Announce channel ID (blank = off)', cfg.announceChannelId ?? '')
+        input('announce', 'Announce channel ID (blank = off)', cfg.announceChannelId ?? ''),
+        input('lottery', 'Lottery channel ID (blank = off)', cfg.lotteryChannelId ?? '')
+      );
+      break;
+    case 'lottery':
+      builder = new ModalBuilder().setCustomId('invadm:modal:lottery').setTitle('Lottery Settings').addComponents(
+        input('perDaily', 'Tickets per /daily', String(cfg.ticketsPerDaily)),
+        input('perInvite', 'Tickets per verified invite', String(cfg.ticketsPerInvite)),
+        input('perRide', 'Tickets per completed ride', String(cfg.ticketsPerRide)),
+        input('perEvent', 'Tickets per event', String(cfg.ticketsPerEvent)),
+        input('prizeKey', 'Prize reward key', cfg.lotteryPrizeKey)
+      );
+      break;
+    case 'shopadd':
+      builder = new ModalBuilder().setCustomId('invadm:modal:shopadd').setTitle('Add / Edit Shop Item').addComponents(
+        input('key', 'Item key (unique)', '', true),
+        input('label', 'Display label', '', true),
+        input('priceRc', 'Price (RC)', '', true),
+        input('rewardKey', 'Reward key (blank = item key)', '')
+      );
+      break;
+    case 'shopremove':
+      builder = new ModalBuilder().setCustomId('invadm:modal:shopremove').setTitle('Remove Shop Item').addComponents(
+        input('key', 'Item key to remove', '', true)
       );
       break;
     case 'milestoneadd':
       builder = new ModalBuilder().setCustomId('invadm:modal:milestoneadd').setTitle('Add / Edit Milestone').addComponents(
         input('threshold', 'Invite threshold', '', true),
-        input('rewardAmount', 'Reward RC (0 for role-only)', '0'),
+        input('rewardAmount', 'Reward RC (0 = none)', '0'),
         input('roleId', 'Reward role ID (optional)', ''),
-        input('label', 'Label (optional)', '')
+        input('rideKey', 'Ride reward key (optional)', ''),
+        input('tickets', 'Lottery tickets (0 = none)', '0')
       );
       break;
     case 'milestoneremove':

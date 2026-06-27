@@ -11,7 +11,7 @@ const wallet_1 = require("../../lib/wallet");
 const config_1 = require("../../config");
 // ═══════════════════════════════════════════════════════════════════════════
 //  InviteAdminService — configuration CRUD, milestones, resets, and manual
-//  overrides used by the /invite-admin panel.
+//  overrides used by the /admin economy panel.
 // ═══════════════════════════════════════════════════════════════════════════
 class InviteAdminService {
     constructor(stats, logging) {
@@ -32,15 +32,23 @@ class InviteAdminService {
         });
     }
     async ensureMilestones(guildId) {
-        await prisma_1.prisma.inviteMilestone.createMany({
-            data: config_1.config.invite.defaultMilestones.map((m) => ({
-                guildId,
-                threshold: m.threshold,
-                rewardAmount: m.rewardAmount,
-                label: m.label,
-            })),
-            skipDuplicates: true,
-        });
+        // Upsert the default ladder by threshold so the configured reward set (RC,
+        // role, ride code, tickets) is present. Admins can edit via /admin economy.
+        for (const m of config_1.config.invite.defaultMilestones) {
+            await prisma_1.prisma.inviteMilestone.upsert({
+                where: { guildId_threshold: { guildId, threshold: m.threshold } },
+                create: {
+                    guildId,
+                    threshold: m.threshold,
+                    rewardAmount: m.rewardAmount,
+                    rewardRoleId: m.rewardRoleId,
+                    rewardRideKey: m.rewardRideKey,
+                    rewardTickets: m.rewardTickets,
+                    label: m.label,
+                },
+                update: {},
+            });
+        }
     }
     async getConfig(guildId) {
         return this.ensureConfig(guildId);
@@ -53,11 +61,11 @@ class InviteAdminService {
     async listMilestones(guildId) {
         return prisma_1.prisma.inviteMilestone.findMany({ where: { guildId }, orderBy: { threshold: 'asc' } });
     }
-    async addMilestone(guildId, threshold, rewardAmount, rewardRoleId, label) {
+    async addMilestone(guildId, threshold, rewardAmount, rewardRoleId, label, rewardRideKey = null, rewardTickets = 0) {
         return prisma_1.prisma.inviteMilestone.upsert({
             where: { guildId_threshold: { guildId, threshold } },
-            create: { guildId, threshold, rewardAmount, rewardRoleId, label },
-            update: { rewardAmount, rewardRoleId, label, enabled: true },
+            create: { guildId, threshold, rewardAmount, rewardRoleId, rewardRideKey, rewardTickets, label },
+            update: { rewardAmount, rewardRoleId, rewardRideKey, rewardTickets, label, enabled: true },
         });
     }
     async removeMilestone(guildId, threshold) {

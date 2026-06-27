@@ -208,4 +208,8 @@ export interface AppServices {
   providerStats: IProviderStatsService;
   blacklist: IBlacklistService;
   invite:   import('./services/invite/InviteService').InviteService;
+  redemption: import('./services/economy/RedemptionService').RedemptionService;
+  shop:       import('./services/economy/ShopService').ShopService;
+  lottery:    import('./services/economy/LotteryService').LotteryService;
+  activity:   import('./services/economy/ActivityService').ActivityService;
 }

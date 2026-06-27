@@ -10,25 +10,41 @@ import { InviteLeaderboardService } from './InviteLeaderboardService';
 import { InviteMilestoneService } from './InviteMilestoneService';
 import { InviteRewardService } from './InviteRewardService';
 import { InviteAdminService } from './InviteAdminService';
+import type { RedemptionService } from '../economy/RedemptionService';
+import type { LotteryService } from '../economy/LotteryService';
+import type { ActivityService } from '../economy/ActivityService';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  InviteService — facade that owns the invite sub-services and is the single
 //  entry point used by Discord events, the verification sweep, and commands.
 // ═══════════════════════════════════════════════════════════════════════════
 
+export interface InviteEconomyDeps {
+  redemption: RedemptionService;
+  lottery: LotteryService;
+  activity: ActivityService;
+}
+
 export class InviteService {
   readonly cache = new InviteCacheService();
   readonly logging = new InviteLoggingService();
-  readonly verification = new InviteVerificationService();
   readonly stats = new InviteStatisticsService();
   readonly leaderboard = new InviteLeaderboardService();
-  readonly milestones = new InviteMilestoneService(this.logging, this.stats);
-  readonly reward = new InviteRewardService(this.logging, this.stats, this.milestones);
   readonly admin = new InviteAdminService(this.stats, this.logging);
+
+  readonly verification: InviteVerificationService;
+  readonly milestones: InviteMilestoneService;
+  readonly reward: InviteRewardService;
 
   private sweepTimer: NodeJS.Timeout | null = null;
   private sweeping = false;
   private readonly guildLocks = new Map<string, Promise<void>>();
+
+  constructor(private readonly econ: InviteEconomyDeps) {
+    this.verification = new InviteVerificationService(econ.activity);
+    this.milestones = new InviteMilestoneService(this.logging, this.stats, econ.redemption, econ.lottery);
+    this.reward = new InviteRewardService(this.logging, this.stats, this.milestones, econ.lottery);
+  }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────---
 
@@ -166,6 +182,29 @@ export class InviteService {
 
         const cfg = await this.admin.ensureConfig(join.guildId);
         const check = await this.verification.finalCheck(guild, join.invitedUserId, join.accountCreatedAt, cfg);
+
+        // Not yet eligible (e.g. under the minimum message count) but still a
+        // valid member: defer re-verification until they engage, up to a cap.
+        if (!check.ok && check.defer) {
+          const attempts = join.verifyAttempts + 1;
+          if (attempts >= cfg.maxVerifyAttempts) {
+            await prisma.inviteJoin.update({
+              where: { id: join.id },
+              data: { status: InviteStatus.FAKE, fakeReason: 'RATE_LIMIT', verifyAttempts: attempts },
+            });
+            if (join.inviterUserId) await this.stats.recomputeUserStats(join.guildId, join.inviterUserId);
+            await this.logging.log(
+              { guildId: join.guildId, event: 'JOIN_FAKE', actorId: join.inviterUserId, targetUserId: join.invitedUserId, joinId: join.id, detail: 'Never met minimum activity (RATE_LIMIT)' },
+              { client, channelId: cfg.loggingChannelId }
+            );
+          } else {
+            await prisma.inviteJoin.update({
+              where: { id: join.id },
+              data: { verifyAttempts: attempts, verifyAt: new Date(Date.now() + cfg.verificationDelaySec * 1000) },
+            });
+          }
+          continue;
+        }
 
         if (!check.ok) {
           await prisma.inviteJoin.update({

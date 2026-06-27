@@ -45,6 +45,8 @@ const BookingService_1 = require("./services/BookingService");
 const ProviderStatsService_1 = require("./services/ProviderStatsService");
 const BlacklistService_1 = require("./services/BlacklistService");
 const InviteService_1 = require("./services/invite/InviteService");
+const EconomyServices_1 = require("./services/economy/EconomyServices");
+const SchedulerService_1 = require("./services/economy/SchedulerService");
 // Command handlers
 const Economy = __importStar(require("./commands/economy"));
 const Crates = __importStar(require("./commands/crates"));
@@ -55,10 +57,21 @@ const ProviderLeaderboard = __importStar(require("./commands/provider-leaderboar
 const Blacklist = __importStar(require("./commands/blacklist"));
 const Panels = __importStar(require("./commands/panels"));
 const Invite = __importStar(require("./commands/invite"));
-const InviteAdmin = __importStar(require("./commands/inviteAdmin"));
+const Admin = __importStar(require("./commands/inviteAdmin"));
+const Referral = __importStar(require("./commands/referral"));
+const Shop = __importStar(require("./commands/shop"));
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
 // ═══════════════════════════════════════════════════════════════════════════
+// Referral economy services (redemptions, shop, lottery, activity). Constructed
+// first so the invite system can grant tickets / issue ride codes on rewards.
+const economy = new EconomyServices_1.EconomyServices();
+const invite = new InviteService_1.InviteService({
+    redemption: economy.redemption,
+    lottery: economy.lottery,
+    activity: economy.activity,
+});
+const scheduler = new SchedulerService_1.SchedulerService(economy.lottery, invite);
 const services = {
     economy: new EconomyService_1.EconomyService(),
     user: new UserService_1.UserService(),
@@ -67,7 +80,11 @@ const services = {
     booking: new BookingService_1.BookingService(),
     providerStats: new ProviderStatsService_1.ProviderStatsService(),
     blacklist: new BlacklistService_1.BlacklistService(),
-    invite: new InviteService_1.InviteService(),
+    invite,
+    redemption: economy.redemption,
+    shop: economy.shop,
+    lottery: economy.lottery,
+    activity: economy.activity,
 };
 const client = new discord_js_1.Client({
     intents: [
@@ -105,7 +122,11 @@ async function registerCommands(client) {
         Panels.orderPanelData,
         Invite.inviteUserData,
         Invite.invitesLeaderboardData,
-        InviteAdmin.inviteAdminData,
+        Referral.referralData,
+        Shop.shopData,
+        Shop.redeemData,
+        Shop.lotteryData,
+        Admin.adminData,
     ].map((c) => c.toJSON());
     const rest = new discord_js_1.REST().setToken(config_1.config.token);
     if (config_1.config.guildId) {
@@ -160,8 +181,12 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
                 await Invite.handleLeaderboardButton(btn, services);
                 return;
             }
+            if (id.startsWith('shop:')) {
+                await Shop.handleShopButton(btn, services);
+                return;
+            }
             if (id.startsWith('invadm:')) {
-                await InviteAdmin.handleAdminButton(btn, services);
+                await Admin.handleAdminButton(btn, services);
                 return;
             }
             return;
@@ -170,7 +195,7 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
         if (interaction.isStringSelectMenu()) {
             const select = interaction;
             if (select.customId === 'invadm:nav') {
-                await InviteAdmin.handleAdminSelect(select, services);
+                await Admin.handleAdminSelect(select, services);
                 return;
             }
             return;
@@ -187,7 +212,7 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
                 return;
             }
             if (modal.customId.startsWith('invadm:modal:')) {
-                await InviteAdmin.handleAdminModal(modal, services);
+                await Admin.handleAdminModal(modal, services);
                 return;
             }
             return;
@@ -262,8 +287,20 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             case 'invites':
                 await Invite.handleInviteLeaderboard(interaction, services);
                 break;
-            case 'invite-admin':
-                await InviteAdmin.handleInviteAdmin(interaction, services);
+            case 'referral':
+                await Referral.handleReferral(interaction, services);
+                break;
+            case 'shop':
+                await Shop.handleShop(interaction, services);
+                break;
+            case 'redeem':
+                await Shop.handleRedeem(interaction, services);
+                break;
+            case 'lottery':
+                await Shop.handleLottery(interaction, services);
+                break;
+            case 'admin':
+                await Admin.handleAdmin(interaction, services);
                 break;
             default:
                 console.warn(`[Bot] Unknown command: ${interaction.commandName}`);
@@ -324,9 +361,22 @@ client.on(discord_js_1.Events.InviteDelete, (invite) => {
         console.error('[Bot] inviteDelete error:', err);
     }
 });
+// Count member messages for the minimum-message anti-abuse gate (no content
+// needed — only the per-user counter).
+client.on(discord_js_1.Events.MessageCreate, async (message) => {
+    if (!message.guildId || message.author.bot)
+        return;
+    try {
+        await services.activity.increment(message.guildId, message.author.id);
+    }
+    catch (err) {
+        console.error('[Bot] messageCreate activity error:', err);
+    }
+});
 client.on(discord_js_1.Events.GuildCreate, async (guild) => {
     try {
         await services.invite.handleGuildCreate(guild);
+        await economy.ensureGuild(guild.id);
     }
     catch (err) {
         console.error('[Bot] guildCreate error:', err);
@@ -364,6 +414,17 @@ client.once(discord_js_1.Events.ClientReady, async (c) => {
     }
     catch (err) {
         console.error('[Bot] Failed to initialise invite system:', err);
+    }
+    // Seed per-guild shop defaults and start the restart-safe scheduler (weekly
+    // lottery draw + weekly/monthly resets).
+    try {
+        for (const guild of c.guilds.cache.values()) {
+            await economy.ensureGuild(guild.id);
+        }
+        scheduler.start(c);
+    }
+    catch (err) {
+        console.error('[Bot] Failed to start economy scheduler:', err);
     }
 });
 client.login(config_1.config.token).catch((err) => {

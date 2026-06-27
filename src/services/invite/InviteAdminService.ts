@@ -8,7 +8,7 @@ import { InviteLoggingService } from './InviteLoggingService';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  InviteAdminService — configuration CRUD, milestones, resets, and manual
-//  overrides used by the /invite-admin panel.
+//  overrides used by the /admin economy panel.
 // ═══════════════════════════════════════════════════════════════════════════
 
 export class InviteAdminService {
@@ -33,15 +33,23 @@ export class InviteAdminService {
   }
 
   async ensureMilestones(guildId: string): Promise<void> {
-    await prisma.inviteMilestone.createMany({
-      data: appConfig.invite.defaultMilestones.map((m) => ({
-        guildId,
-        threshold: m.threshold,
-        rewardAmount: m.rewardAmount,
-        label: m.label,
-      })),
-      skipDuplicates: true,
-    });
+    // Upsert the default ladder by threshold so the configured reward set (RC,
+    // role, ride code, tickets) is present. Admins can edit via /admin economy.
+    for (const m of appConfig.invite.defaultMilestones) {
+      await prisma.inviteMilestone.upsert({
+        where: { guildId_threshold: { guildId, threshold: m.threshold } },
+        create: {
+          guildId,
+          threshold: m.threshold,
+          rewardAmount: m.rewardAmount,
+          rewardRoleId: m.rewardRoleId,
+          rewardRideKey: m.rewardRideKey,
+          rewardTickets: m.rewardTickets,
+          label: m.label,
+        },
+        update: {},
+      });
+    }
   }
 
   async getConfig(guildId: string): Promise<InviteConfig> {
@@ -67,12 +75,14 @@ export class InviteAdminService {
     threshold: number,
     rewardAmount: number,
     rewardRoleId: string | null,
-    label: string | null
+    label: string | null,
+    rewardRideKey: string | null = null,
+    rewardTickets = 0
   ): Promise<InviteMilestone> {
     return prisma.inviteMilestone.upsert({
       where: { guildId_threshold: { guildId, threshold } },
-      create: { guildId, threshold, rewardAmount, rewardRoleId, label },
-      update: { rewardAmount, rewardRoleId, label, enabled: true },
+      create: { guildId, threshold, rewardAmount, rewardRoleId, rewardRideKey, rewardTickets, label },
+      update: { rewardAmount, rewardRoleId, rewardRideKey, rewardTickets, label, enabled: true },
     });
   }
 

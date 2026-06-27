@@ -449,6 +449,17 @@ export async function handleBookingActionButton(
       interaction.user.id,
       new Decimal(updated.price.toString())
     );
+    // Award the customer weekly-lottery tickets for completing a ride.
+    if (interaction.guildId) {
+      try {
+        const cfg = await services.invite.admin.getConfig(interaction.guildId);
+        if (cfg.lotteryEnabled && cfg.ticketsPerRide > 0) {
+          await services.lottery.grantTickets(interaction.guildId, updated.customerId, 'ride', cfg.ticketsPerRide);
+        }
+      } catch (err) {
+        console.error('[Book] lottery ticket grant failed:', err);
+      }
+    }
     await updateTicketMessage(interaction.client, updated);
     await triggerReviewFlow(interaction.client, updated);
     await ephemeralReply(interaction, `Booking **${bookingNumber}** marked as completed.`);

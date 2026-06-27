@@ -11,9 +11,11 @@ const prisma_1 = require("../../lib/prisma");
 const wallet_1 = require("../../lib/wallet");
 const discord_1 = require("../../utils/discord");
 class InviteMilestoneService {
-    constructor(logging, stats) {
+    constructor(logging, stats, redemption, lottery) {
         this.logging = logging;
         this.stats = stats;
+        this.redemption = redemption;
+        this.lottery = lottery;
     }
     async checkAndAward(ctx) {
         if (!ctx.milestonesEnabled)
@@ -34,8 +36,9 @@ class InviteMilestoneService {
             });
             if (exists)
                 continue;
+            let rideCode = null;
             try {
-                await prisma_1.prisma.$transaction(async (tx) => {
+                rideCode = await prisma_1.prisma.$transaction(async (tx) => {
                     await tx.inviteMilestoneAward.create({ data: { guildId, userId, milestoneId: m.id } });
                     if (m.rewardAmount > 0) {
                         await (0, wallet_1.adjustBalance)(tx, userId, new decimal_js_1.default(m.rewardAmount), 'invite_milestone', `Invite milestone: ${m.threshold} verified invites`);
@@ -49,6 +52,21 @@ class InviteMilestoneService {
                             },
                         });
                     }
+                    let code = null;
+                    if (m.rewardRideKey) {
+                        code = this.redemption.generateCode();
+                        await tx.redemption.create({
+                            data: { guildId, userId, rewardKey: m.rewardRideKey, code, source: client_1.RedemptionSource.MILESTONE },
+                        });
+                    }
+                    if (m.rewardTickets > 0) {
+                        await tx.lotteryTicket.upsert({
+                            where: { guildId_userId: { guildId, userId } },
+                            create: { guildId, userId, tickets: m.rewardTickets },
+                            update: { tickets: { increment: m.rewardTickets } },
+                        });
+                    }
+                    return code;
                 });
             }
             catch (err) {
@@ -73,15 +91,29 @@ class InviteMilestoneService {
                 label: m.label,
                 rewardAmount: m.rewardAmount,
                 rewardRoleId: m.rewardRoleId,
+                rewardRideKey: m.rewardRideKey,
+                rewardTickets: m.rewardTickets,
+                rideCode,
             });
+            const rewardParts = [];
+            if (m.rewardAmount > 0)
+                rewardParts.push(`+${m.rewardAmount} ${discord_1.BRAND.ticker}`);
+            if (m.rewardRideKey)
+                rewardParts.push(this.redemption.label(m.rewardRideKey));
+            if (m.rewardRoleId)
+                rewardParts.push('role');
+            if (m.rewardTickets > 0)
+                rewardParts.push(`${m.rewardTickets} lottery ticket(s)`);
             await this.logging.log({
                 guildId,
                 event: 'MILESTONE_COMPLETED',
                 actorId: userId,
-                detail: `Reached ${m.threshold} invites${m.label ? ` (${m.label})` : ''} → +${m.rewardAmount} ${discord_1.BRAND.ticker}`,
+                detail: `Reached ${m.threshold} invites${m.label ? ` (${m.label})` : ''} → ${rewardParts.join(', ') || 'no reward'}`,
             }, { client: ctx.client, channelId: ctx.loggingChannelId });
+            if (rideCode)
+                await this.dmRideCode(ctx.client, userId, m.rewardRideKey, rideCode);
             if (ctx.autoAnnounce) {
-                await this.announce(ctx, m.threshold, m.label, m.rewardAmount, m.rewardRoleId);
+                await this.announce(ctx, m);
             }
         }
         if (awarded.length > 0) {
@@ -89,7 +121,7 @@ class InviteMilestoneService {
         }
         return awarded;
     }
-    async announce(ctx, threshold, label, rewardAmount, rewardRoleId) {
+    async announce(ctx, m) {
         if (!ctx.announceChannelId || ctx.announceChannelId === '0')
             return;
         try {
@@ -97,21 +129,40 @@ class InviteMilestoneService {
             if (!channel || !channel.isTextBased() || channel.isDMBased())
                 return;
             const rewardLines = [];
-            if (rewardAmount > 0)
-                rewardLines.push(`${discord_1.ICON.coin} **${rewardAmount}** ${discord_1.BRAND.ticker}`);
-            if (rewardRoleId)
-                rewardLines.push(`${discord_1.ICON.jackpot} <@&${rewardRoleId}>`);
+            if (m.rewardAmount > 0)
+                rewardLines.push(`${discord_1.ICON.coin} **${m.rewardAmount}** ${discord_1.BRAND.ticker}`);
+            if (m.rewardRideKey)
+                rewardLines.push(`${discord_1.ICON.win} **${this.redemption.label(m.rewardRideKey)}**`);
+            if (m.rewardRoleId)
+                rewardLines.push(`${discord_1.ICON.jackpot} <@&${m.rewardRoleId}>`);
+            if (m.rewardTickets > 0)
+                rewardLines.push(`🎟️ **${m.rewardTickets}** lottery ticket(s)`);
             const embed = new discord_js_1.EmbedBuilder()
                 .setColor(discord_1.COLOR.JACKPOT)
                 .setAuthor({ name: `${discord_1.BRAND.logo}  Invite Milestone` })
                 .setTitle(`${discord_1.ICON.jackpot} Milestone Unlocked!`)
-                .setDescription(`<@${ctx.userId}> just reached **${threshold} invites**${label ? ` — **${label}**` : ''}!\n\n` +
+                .setDescription(`<@${ctx.userId}> just reached **${m.threshold} invites**${m.label ? ` — **${m.label}**` : ''}!\n\n` +
                 (rewardLines.length ? `**Rewards**\n${rewardLines.join('\n')}` : ''))
                 .setTimestamp();
             await channel.send({ content: `<@${ctx.userId}>`, embeds: [embed] });
         }
         catch (err) {
             console.error('[Invite] Milestone announce failed:', err);
+        }
+    }
+    async dmRideCode(client, userId, rewardKey, code) {
+        try {
+            const user = await client.users.fetch(userId);
+            const embed = new discord_js_1.EmbedBuilder()
+                .setColor(discord_1.COLOR.WIN)
+                .setAuthor({ name: `${discord_1.BRAND.logo}  Invite Milestone` })
+                .setTitle(`${discord_1.ICON.win} You earned a ride reward!`)
+                .setDescription(`Reward: **${this.redemption.label(rewardKey)}**\nRedemption code: \`${code}\`\n\nShow this code to staff in your booking ticket to claim it.`)
+                .setTimestamp();
+            await user.send({ embeds: [embed] });
+        }
+        catch {
+            /* DMs closed — code remains retrievable via /redeem listing */
         }
     }
 }

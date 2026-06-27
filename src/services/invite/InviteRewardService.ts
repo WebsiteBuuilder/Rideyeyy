@@ -7,6 +7,7 @@ import { COLOR, BRAND, ICON } from '../../utils/discord';
 import { InviteLoggingService } from './InviteLoggingService';
 import { InviteStatisticsService } from './InviteStatisticsService';
 import { InviteMilestoneService } from './InviteMilestoneService';
+import type { LotteryService } from '../economy/LotteryService';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  InviteRewardService — credits RouteCash to an inviter for a verified invite,
@@ -35,8 +36,16 @@ export class InviteRewardService {
   constructor(
     private readonly logging: InviteLoggingService,
     private readonly stats: InviteStatisticsService,
-    private readonly milestones: InviteMilestoneService
+    private readonly milestones: InviteMilestoneService,
+    private readonly lottery: LotteryService
   ) {}
+
+  /** Grant lottery tickets to an inviter for a freshly verified invite. */
+  private async grantInviteTickets(guildId: string, inviterId: string, config: InviteConfig): Promise<void> {
+    if (config.lotteryEnabled && config.ticketsPerInvite > 0) {
+      await this.lottery.grantTickets(guildId, inviterId, 'invite', config.ticketsPerInvite);
+    }
+  }
 
   /** Reward a join that has already passed verification. */
   async rewardJoin(client: Client, guild: Guild, join: InviteJoin, config: InviteConfig): Promise<RewardOutcome> {
@@ -106,6 +115,7 @@ export class InviteRewardService {
 
     await this.stats.registerVerifiedInvite(guildId, inviterId);
     await this.stats.recomputeUserStats(guildId, inviterId);
+    await this.grantInviteTickets(guildId, inviterId, config);
 
     await this.logging.log(
       { guildId, event: 'REWARD_PAID', actorId: inviterId, targetUserId: join.invitedUserId, joinId: join.id, detail: `+${amount} ${BRAND.ticker}` },
@@ -171,6 +181,7 @@ export class InviteRewardService {
     });
     await this.stats.registerVerifiedInvite(guild.id, inviterId);
     await this.stats.recomputeUserStats(guild.id, inviterId);
+    await this.grantInviteTickets(guild.id, inviterId, config);
     await this.milestones.checkAndAward({
       client,
       guild,

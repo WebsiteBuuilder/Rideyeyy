@@ -261,7 +261,19 @@ export async function handleDaily(
     );
     const newBalance = await services.economy.getBalance(interaction.user.id);
     const maxed = streak >= config.daily.maxStreak;
-    
+
+    // Award weekly-lottery tickets for the daily claim.
+    if (interaction.guildId) {
+      try {
+        const cfg = await services.invite.admin.getConfig(interaction.guildId);
+        if (cfg.lotteryEnabled && cfg.ticketsPerDaily > 0) {
+          await services.lottery.grantTickets(interaction.guildId, interaction.user.id, 'daily', cfg.ticketsPerDaily);
+        }
+      } catch (err) {
+        console.error('[Daily] lottery ticket grant failed:', err);
+      }
+    }
+
     const embed = new EmbedBuilder()
       .setColor(maxed ? COLOR.JACKPOT : COLOR.WIN)
       .setAuthor({ name: `${BRAND.icon}  ${BRAND.name}`, iconURL: interaction.guild?.iconURL({ size: 256 }) ?? undefined })

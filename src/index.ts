@@ -12,6 +12,8 @@ import { BookingService } from './services/BookingService';
 import { ProviderStatsService } from './services/ProviderStatsService';
 import { BlacklistService } from './services/BlacklistService';
 import { InviteService } from './services/invite/InviteService';
+import { EconomyServices } from './services/economy/EconomyServices';
+import { SchedulerService } from './services/economy/SchedulerService';
 
 // Command handlers
 import * as Economy  from './commands/economy';
@@ -23,11 +25,23 @@ import * as ProviderLeaderboard from './commands/provider-leaderboard';
 import * as Blacklist from './commands/blacklist';
 import * as Panels from './commands/panels';
 import * as Invite from './commands/invite';
-import * as InviteAdmin from './commands/inviteAdmin';
+import * as Admin from './commands/inviteAdmin';
+import * as Referral from './commands/referral';
+import * as Shop from './commands/shop';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Referral economy services (redemptions, shop, lottery, activity). Constructed
+// first so the invite system can grant tickets / issue ride codes on rewards.
+const economy = new EconomyServices();
+const invite = new InviteService({
+  redemption: economy.redemption,
+  lottery: economy.lottery,
+  activity: economy.activity,
+});
+const scheduler = new SchedulerService(economy.lottery, invite);
 
 const services: AppServices = {
   economy:  new EconomyService(),
@@ -37,7 +51,11 @@ const services: AppServices = {
   booking:  new BookingService(),
   providerStats: new ProviderStatsService(),
   blacklist: new BlacklistService(),
-  invite: new InviteService(),
+  invite,
+  redemption: economy.redemption,
+  shop:       economy.shop,
+  lottery:    economy.lottery,
+  activity:   economy.activity,
 };
 
 const client = new Client({
@@ -78,7 +96,11 @@ async function registerCommands(client: Client): Promise<void> {
     Panels.orderPanelData,
     Invite.inviteUserData,
     Invite.invitesLeaderboardData,
-    InviteAdmin.inviteAdminData,
+    Referral.referralData,
+    Shop.shopData,
+    Shop.redeemData,
+    Shop.lotteryData,
+    Admin.adminData,
   ].map((c) => c.toJSON());
 
   const rest = new REST().setToken(config.token);
@@ -137,8 +159,12 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         await Invite.handleLeaderboardButton(btn, services);
         return;
       }
+      if (id.startsWith('shop:')) {
+        await Shop.handleShopButton(btn, services);
+        return;
+      }
       if (id.startsWith('invadm:')) {
-        await InviteAdmin.handleAdminButton(btn, services);
+        await Admin.handleAdminButton(btn, services);
         return;
       }
       return;
@@ -148,7 +174,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     if (interaction.isStringSelectMenu()) {
       const select = interaction as StringSelectMenuInteraction;
       if (select.customId === 'invadm:nav') {
-        await InviteAdmin.handleAdminSelect(select, services);
+        await Admin.handleAdminSelect(select, services);
         return;
       }
       return;
@@ -166,7 +192,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         return;
       }
       if (modal.customId.startsWith('invadm:modal:')) {
-        await InviteAdmin.handleAdminModal(modal, services);
+        await Admin.handleAdminModal(modal, services);
         return;
       }
       return;
@@ -198,7 +224,11 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       case 'orderpanel':   await Panels.handleOrderPanel(interaction);            break;
       case 'invite':       await Invite.handleInvite(interaction, services);       break;
       case 'invites':      await Invite.handleInviteLeaderboard(interaction, services); break;
-      case 'invite-admin': await InviteAdmin.handleInviteAdmin(interaction, services); break;
+      case 'referral':     await Referral.handleReferral(interaction, services);   break;
+      case 'shop':         await Shop.handleShop(interaction, services);           break;
+      case 'redeem':       await Shop.handleRedeem(interaction, services);         break;
+      case 'lottery':      await Shop.handleLottery(interaction, services);        break;
+      case 'admin':        await Admin.handleAdmin(interaction, services);         break;
       default:
         console.warn(`[Bot] Unknown command: ${interaction.commandName}`);
     }
@@ -256,9 +286,21 @@ client.on(Events.InviteDelete, (invite) => {
   }
 });
 
+// Count member messages for the minimum-message anti-abuse gate (no content
+// needed — only the per-user counter).
+client.on(Events.MessageCreate, async (message) => {
+  if (!message.guildId || message.author.bot) return;
+  try {
+    await services.activity.increment(message.guildId, message.author.id);
+  } catch (err) {
+    console.error('[Bot] messageCreate activity error:', err);
+  }
+});
+
 client.on(Events.GuildCreate, async (guild) => {
   try {
     await services.invite.handleGuildCreate(guild);
+    await economy.ensureGuild(guild.id);
   } catch (err) {
     console.error('[Bot] guildCreate error:', err);
   }
@@ -293,6 +335,16 @@ client.once(Events.ClientReady, async (c) => {
     await services.invite.init(c);
   } catch (err) {
     console.error('[Bot] Failed to initialise invite system:', err);
+  }
+  // Seed per-guild shop defaults and start the restart-safe scheduler (weekly
+  // lottery draw + weekly/monthly resets).
+  try {
+    for (const guild of c.guilds.cache.values()) {
+      await economy.ensureGuild(guild.id);
+    }
+    scheduler.start(c);
+  } catch (err) {
+    console.error('[Bot] Failed to start economy scheduler:', err);
   }
 });
 

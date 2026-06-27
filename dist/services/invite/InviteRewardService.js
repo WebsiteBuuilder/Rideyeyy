@@ -17,10 +17,17 @@ const discord_1 = require("../../utils/discord");
 // ═══════════════════════════════════════════════════════════════════════════
 const DAY_MS = 24 * 60 * 60 * 1000;
 class InviteRewardService {
-    constructor(logging, stats, milestones) {
+    constructor(logging, stats, milestones, lottery) {
         this.logging = logging;
         this.stats = stats;
         this.milestones = milestones;
+        this.lottery = lottery;
+    }
+    /** Grant lottery tickets to an inviter for a freshly verified invite. */
+    async grantInviteTickets(guildId, inviterId, config) {
+        if (config.lotteryEnabled && config.ticketsPerInvite > 0) {
+            await this.lottery.grantTickets(guildId, inviterId, 'invite', config.ticketsPerInvite);
+        }
     }
     /** Reward a join that has already passed verification. */
     async rewardJoin(client, guild, join, config) {
@@ -74,6 +81,7 @@ class InviteRewardService {
         }
         await this.stats.registerVerifiedInvite(guildId, inviterId);
         await this.stats.recomputeUserStats(guildId, inviterId);
+        await this.grantInviteTickets(guildId, inviterId, config);
         await this.logging.log({ guildId, event: 'REWARD_PAID', actorId: inviterId, targetUserId: join.invitedUserId, joinId: join.id, detail: `+${amount} ${discord_1.BRAND.ticker}` }, { client, channelId: config.loggingChannelId });
         await this.notify(client, guild, inviterId, join.invitedUserId, amount, config);
         await this.milestones.checkAndAward({
@@ -127,6 +135,7 @@ class InviteRewardService {
         });
         await this.stats.registerVerifiedInvite(guild.id, inviterId);
         await this.stats.recomputeUserStats(guild.id, inviterId);
+        await this.grantInviteTickets(guild.id, inviterId, config);
         await this.milestones.checkAndAward({
             client,
             guild,

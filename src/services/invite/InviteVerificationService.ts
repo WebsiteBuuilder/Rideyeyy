@@ -1,6 +1,7 @@
 import { Guild, GuildMember } from 'discord.js';
 import { InviteFakeReason } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
+import type { ActivityService } from '../economy/ActivityService';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  InviteVerificationService — decides whether an invited member is legitimate,
@@ -12,14 +13,19 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface VerificationConfig {
   antiAltEnabled: boolean;
   minAccountAgeDays: number;
+  minMessages: number;
 }
 
 export interface VerificationResult {
   ok: boolean;
   reason?: InviteFakeReason;
+  /** True when the member is valid but not yet eligible (retry later). */
+  defer?: boolean;
 }
 
 export class InviteVerificationService {
+  constructor(private readonly activity: ActivityService) {}
+
   /** Checks run the moment a member joins. */
   async immediateCheck(
     member: GuildMember,
@@ -74,6 +80,15 @@ export class InviteVerificationService {
 
     if (await this.wasBanned(guild, userId)) {
       return { ok: false, reason: 'BAN_EVASION' };
+    }
+
+    // Minimum message engagement: a present member who hasn't chatted enough is
+    // deferred (not marked fake) so they can still qualify by participating.
+    if (config.minMessages > 0) {
+      const messages = await this.activity.getMessageCount(guild.id, userId);
+      if (messages < config.minMessages) {
+        return { ok: false, defer: true };
+      }
     }
 
     return { ok: true };
