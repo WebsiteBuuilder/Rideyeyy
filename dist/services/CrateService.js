@@ -116,6 +116,7 @@ class CrateService {
             reward_value: picked.reward_value,
             description: reward.description,
             rarity: reward.rarity,
+            is_jackpot: isJackpot,
         };
         // Money + logging happen atomically; the role grant (Discord API) is best-effort.
         await prisma_1.prisma.$transaction(async (tx) => {
@@ -135,8 +136,8 @@ class CrateService {
         `;
             }
             await tx.$executeRaw `
-        INSERT INTO crate_opens (user_id, crate_type, rc_spent, rewards_received_json, is_jackpot)
-        VALUES (${userId}::bigint, ${type}, ${new decimal_js_1.default(cost).toFixed()}::numeric, ${JSON.stringify([rewardLog])}::jsonb, ${isJackpot})
+        INSERT INTO crate_opens (user_id, crate_type, rc_spent, rewards_received_json)
+        VALUES (${userId}::bigint, ${type}, ${new decimal_js_1.default(cost).toFixed()}::numeric, ${JSON.stringify([rewardLog])}::jsonb)
       `;
         });
         // Best-effort Discord role grant for role rewards with a real role id.

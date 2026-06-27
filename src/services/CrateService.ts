@@ -159,6 +159,7 @@ export class CrateService implements ICrateService {
       reward_value: picked.reward_value,
       description: reward.description,
       rarity: reward.rarity,
+      is_jackpot: isJackpot,
     };
 
     // Money + logging happen atomically; the role grant (Discord API) is best-effort.
@@ -180,8 +181,8 @@ export class CrateService implements ICrateService {
       }
 
       await tx.$executeRaw`
-        INSERT INTO crate_opens (user_id, crate_type, rc_spent, rewards_received_json, is_jackpot)
-        VALUES (${userId}::bigint, ${type}, ${new Decimal(cost).toFixed()}::numeric, ${JSON.stringify([rewardLog])}::jsonb, ${isJackpot})
+        INSERT INTO crate_opens (user_id, crate_type, rc_spent, rewards_received_json)
+        VALUES (${userId}::bigint, ${type}, ${new Decimal(cost).toFixed()}::numeric, ${JSON.stringify([rewardLog])}::jsonb)
       `;
     });
 

@@ -9,9 +9,11 @@ import { prisma } from './prisma';
 //    user_balances (user_id BIGINT PK, balance NUMERIC, last_updated)
 //    transactions  (id UUID PK, user_id BIGINT, amount NUMERIC,
 //                   balance_before NUMERIC, balance_after NUMERIC,
-//                   type VARCHAR, reason VARCHAR, created_at)
+//                   type VARCHAR, reason VARCHAR, created_at, + extra columns)
 //
-//  Discord IDs are passed as strings and cast to ::bigint in SQL.
+//  Discord IDs are passed as strings and cast to ::bigint in SQL. The
+//  transactions insert is built dynamically so any extra NOT NULL columns the
+//  production table carries are auto-filled with safe values.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Thrown when a user does not have enough Route Cash. */
@@ -23,7 +25,84 @@ export class InsufficientFundsError extends Error {
 }
 
 // Both PrismaClient and the interactive-transaction client satisfy this.
-export type RawDb = Pick<Prisma.TransactionClient, '$queryRaw' | '$executeRaw'>;
+export type RawDb = Pick<Prisma.TransactionClient, '$queryRaw' | '$executeRaw' | '$executeRawUnsafe'>;
+
+// Identifies rows written by this bot in the shared transactions ledger.
+const SOURCE_SYSTEM = 'guhdrides_bot';
+
+// The columns we always provide values for. Anything else on the table that is
+// NOT NULL without a default gets a safe auto-filled value.
+const KNOWN_TX_COLUMNS = new Set(['user_id', 'amount', 'balance_before', 'balance_after', 'type', 'reason', 'source_system']);
+
+interface TxColumn {
+  name: string;
+  dataType: string;
+  isNullable: boolean;
+  hasDefault: boolean;
+}
+
+let txColumnsCache: TxColumn[] | null = null;
+
+async function getTxAutoColumns(db: RawDb): Promise<TxColumn[]> {
+  if (txColumnsCache) return txColumnsCache;
+  const rows = await db.$queryRaw<
+    { column_name: string; data_type: string; is_nullable: string; column_default: string | null }[]
+  >`
+    SELECT column_name, data_type, is_nullable, column_default
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'transactions'
+  `;
+  const auto = rows
+    .map((r) => ({
+      name: r.column_name,
+      dataType: r.data_type,
+      isNullable: r.is_nullable === 'YES',
+      hasDefault: r.column_default != null,
+    }))
+    .filter((c) => !KNOWN_TX_COLUMNS.has(c.name) && !c.isNullable && !c.hasDefault);
+  txColumnsCache = auto;
+  if (auto.length > 0) {
+    console.log('[wallet] transactions auto-filled NOT NULL columns:', auto.map((c) => `${c.name}(${c.dataType})`).join(', '));
+  }
+  return auto;
+}
+
+/** A safe SQL literal expression for an unrecognised NOT NULL column. */
+function defaultSqlForType(dataType: string): string {
+  const t = dataType.toLowerCase();
+  if (t.includes('uuid')) return 'gen_random_uuid()';
+  if (t.includes('json')) return `'{}'::jsonb`;
+  if (t.includes('bool')) return 'false';
+  if (t.includes('int') || t.includes('numeric') || t.includes('double') || t.includes('real') || t.includes('decimal')) return '0';
+  if (t.includes('timestamp') || t.includes('date') || t.includes('time')) return 'now()';
+  // varchar/text/char and anything else → random text avoids UNIQUE collisions.
+  return 'gen_random_uuid()::text';
+}
+
+async function insertTransaction(
+  db: RawDb,
+  userId: string,
+  amount: Decimal,
+  before: Decimal,
+  after: Decimal,
+  type: string,
+  reason: string
+): Promise<void> {
+  const auto = await getTxAutoColumns(db);
+  const columns = ['user_id', 'amount', 'balance_before', 'balance_after', 'type', 'reason', 'source_system', ...auto.map((c) => `"${c.name}"`)];
+  const values = [
+    '$1::bigint',
+    '$2::numeric',
+    '$3::numeric',
+    '$4::numeric',
+    '$5',
+    '$6',
+    '$7',
+    ...auto.map((c) => defaultSqlForType(c.dataType)),
+  ];
+  const sql = `INSERT INTO transactions (${columns.join(', ')}) VALUES (${values.join(', ')})`;
+  await db.$executeRawUnsafe(sql, userId, amount.toFixed(), before.toFixed(), after.toFixed(), type, reason, SOURCE_SYSTEM);
+}
 
 /** Ensure a balance row exists for the user (no-op if already present). */
 export async function ensureWallet(userId: string, db: RawDb = prisma): Promise<void> {
@@ -67,10 +146,7 @@ export async function adjustBalance(
     UPDATE user_balances SET balance = ${after.toFixed()}::numeric, last_updated = now()
     WHERE user_id = ${userId}::bigint
   `;
-  await db.$executeRaw`
-    INSERT INTO transactions (user_id, amount, balance_before, balance_after, type, reason)
-    VALUES (${userId}::bigint, ${delta.toFixed()}::numeric, ${before.toFixed()}::numeric, ${after.toFixed()}::numeric, ${type}, ${reason})
-  `;
+  await insertTransaction(db, userId, delta, before, after, type, reason);
   return after;
 }
 
