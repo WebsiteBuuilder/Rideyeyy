@@ -63,11 +63,12 @@ class BookingService {
             data: {
                 bookingNumber,
                 customerId: input.customerId,
+                preferredName: input.preferredName.trim(),
                 serviceType: input.serviceType,
                 vehicleType: input.vehicleType ?? null,
                 pickup: input.pickup.trim(),
                 destination: input.destination.trim(),
-                price: input.price.toFixed(2),
+                price: '0.00',
                 notes: input.notes?.trim() || null,
                 status: 'PENDING',
             },

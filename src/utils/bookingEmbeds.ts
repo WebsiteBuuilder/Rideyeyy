@@ -39,6 +39,15 @@ export function bookingChannelName(bookingNumber: string): string {
   return `booking-${bookingNumber.replace(/-/g, '').toLowerCase()}`;
 }
 
+function isUrl(value: string): boolean {
+  return /^https?:\/\/\S+$/i.test(value.trim());
+}
+
+/** Render a location as a masked clickable link when it's a URL, else raw text. */
+function locationValue(value: string): string {
+  return isUrl(value) ? `[Open in Google Maps](${value.trim()})` : value;
+}
+
 export function buildBookingEmbed(
   booking: Booking,
   providerTag?: string
@@ -51,11 +60,11 @@ export function buildBookingEmbed(
   const fields = [
     kvRow('Booking ID', `\`${booking.bookingNumber}\``),
     kvRow('Status', STATUS_LABELS[booking.status]),
+    booking.preferredName ? kvRow('Preferred Name', booking.preferredName) : null,
     kvRow('Service', SERVICE_LABELS[booking.serviceType]),
     vehicleLine,
-    kvRow('Pickup', booking.pickup),
-    kvRow('Destination', booking.destination),
-    kvRow('Price', `$${booking.price.toString()}`),
+    kvRow('Pickup', locationValue(booking.pickup)),
+    kvRow('Dropoff', locationValue(booking.destination)),
     booking.notes ? kvRow('Notes', booking.notes) : null,
     kvRow('Customer', `<@${booking.customerId}>`),
     providerTag

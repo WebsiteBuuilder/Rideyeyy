@@ -45,6 +45,7 @@ model Booking {
   bookingNumber String        @unique
   customerId    String
   providerId    String?
+  preferredName String?
   serviceType   ServiceType
   vehicleType   VehicleType?
   pickup        String

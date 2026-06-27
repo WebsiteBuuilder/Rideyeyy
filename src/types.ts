@@ -149,11 +149,11 @@ export interface BookingDraft {
 
 export interface CreateBookingInput {
   customerId: string;
+  preferredName: string;
   serviceType: ServiceType;
   vehicleType?: VehicleType;
   pickup: string;
   destination: string;
-  price: Decimal;
   notes?: string;
 }
 

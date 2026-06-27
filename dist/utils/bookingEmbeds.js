@@ -29,6 +29,13 @@ const STATUS_LABELS = {
 function bookingChannelName(bookingNumber) {
     return `booking-${bookingNumber.replace(/-/g, '').toLowerCase()}`;
 }
+function isUrl(value) {
+    return /^https?:\/\/\S+$/i.test(value.trim());
+}
+/** Render a location as a masked clickable link when it's a URL, else raw text. */
+function locationValue(value) {
+    return isUrl(value) ? `[Open in Google Maps](${value.trim()})` : value;
+}
 function buildBookingEmbed(booking, providerTag) {
     const vehicleLine = booking.vehicleType != null
         ? (0, discord_1.kvRow)('Vehicle', VEHICLE_LABELS[booking.vehicleType])
@@ -36,11 +43,11 @@ function buildBookingEmbed(booking, providerTag) {
     const fields = [
         (0, discord_1.kvRow)('Booking ID', `\`${booking.bookingNumber}\``),
         (0, discord_1.kvRow)('Status', STATUS_LABELS[booking.status]),
+        booking.preferredName ? (0, discord_1.kvRow)('Preferred Name', booking.preferredName) : null,
         (0, discord_1.kvRow)('Service', SERVICE_LABELS[booking.serviceType]),
         vehicleLine,
-        (0, discord_1.kvRow)('Pickup', booking.pickup),
-        (0, discord_1.kvRow)('Destination', booking.destination),
-        (0, discord_1.kvRow)('Price', `$${booking.price.toString()}`),
+        (0, discord_1.kvRow)('Pickup', locationValue(booking.pickup)),
+        (0, discord_1.kvRow)('Dropoff', locationValue(booking.destination)),
         booking.notes ? (0, discord_1.kvRow)('Notes', booking.notes) : null,
         (0, discord_1.kvRow)('Customer', `<@${booking.customerId}>`),
         providerTag

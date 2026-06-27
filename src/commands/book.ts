@@ -1,5 +1,6 @@
 import {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonInteraction,
   ButtonStyle,
@@ -21,7 +22,6 @@ import type { Booking, ServiceType, VehicleType } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { config } from '../config';
 import type { AppServices } from '../types';
-import { parseAmount } from '../utils/math';
 import {
   actionButton,
   checkCooldown,
@@ -53,28 +53,29 @@ function detailsModal(): ModalBuilder {
     .addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
+          .setCustomId('preferredName')
+          .setLabel('Preferred Name')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(80)
+      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
           .setCustomId('pickup')
-          .setLabel('Pickup Address')
-          .setStyle(TextInputStyle.Paragraph)
+          .setLabel('Pickup (Google Maps link)')
+          .setStyle(TextInputStyle.Short)
           .setRequired(true)
           .setMaxLength(500)
+          .setPlaceholder('https://maps.google.com/...')
       ),
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId('destination')
-          .setLabel('Destination Address')
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(true)
-          .setMaxLength(500)
-      ),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId('price')
-          .setLabel('Offered Price (USD)')
+          .setLabel('Dropoff (Google Maps link)')
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
-          .setMaxLength(20)
-          .setPlaceholder('25.00')
+          .setMaxLength(500)
+          .setPlaceholder('https://maps.google.com/...')
       ),
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
@@ -190,31 +191,24 @@ export async function handleBookModal(
     return;
   }
 
+  const preferredName = interaction.fields.getTextInputValue('preferredName').trim();
   const pickup = interaction.fields.getTextInputValue('pickup').trim();
   const destination = interaction.fields.getTextInputValue('destination').trim();
   const notes = interaction.fields.getTextInputValue('notes')?.trim() || undefined;
 
-  if (!pickup || !destination) {
-    await ephemeralReply(interaction, 'Pickup and destination are required.');
-    return;
-  }
-
-  let price: Decimal;
-  try {
-    price = parseAmount(interaction.fields.getTextInputValue('price'));
-  } catch {
-    await ephemeralReply(interaction, 'Invalid price. Enter a positive number (e.g. `25.00`).');
+  if (!preferredName || !pickup || !destination) {
+    await ephemeralReply(interaction, 'Preferred name, pickup, and dropoff are required.');
     return;
   }
 
   try {
     const booking = await services.booking.createBooking({
       customerId: userId,
+      preferredName,
       serviceType: draft.serviceType,
       vehicleType: draft.vehicleType,
       pickup,
       destination,
-      price,
       notes,
     });
     await interaction.editReply({
@@ -306,6 +300,87 @@ async function updateTicketMessage(
   }
 }
 
+const TICKET_DELETE_DELAY_MS = 30_000;
+
+function buildTranscriptText(booking: Booking, lines: string[]): string {
+  const header = [
+    '═══════════════════════════════════════════',
+    `  GUHD RIDES — Booking Transcript`,
+    '═══════════════════════════════════════════',
+    `Booking ID:     ${booking.bookingNumber}`,
+    `Preferred Name: ${booking.preferredName ?? 'N/A'}`,
+    `Service:        ${booking.serviceType}${booking.vehicleType ? ` (${booking.vehicleType})` : ''}`,
+    `Pickup:         ${booking.pickup}`,
+    `Dropoff:        ${booking.destination}`,
+    `Notes:          ${booking.notes ?? 'N/A'}`,
+    `Customer:       ${booking.customerId}`,
+    `Provider:       ${booking.providerId ?? 'Unassigned'}`,
+    `Status:         ${booking.status}`,
+    `Completed At:   ${new Date().toISOString()}`,
+    '═══════════════════════════════════════════',
+    '',
+  ].join('\n');
+  return `${header}${lines.join('\n')}\n`;
+}
+
+/**
+ * Save a .txt transcript of the ticket channel to the transcript channel, then
+ * delete the ticket channel after a short delay. Best-effort: failures here must
+ * never block booking completion.
+ */
+async function saveTranscriptAndScheduleDelete(client: Client, booking: Booking): Promise<void> {
+  if (!booking.channelId) return;
+  try {
+    const channel = await client.channels.fetch(booking.channelId);
+    if (!channel || !channel.isTextBased() || channel.isDMBased()) return;
+
+    const fetched = await channel.messages.fetch({ limit: 100 });
+    const lines = [...fetched.values()]
+      .reverse()
+      .map((m) => {
+        const time = new Date(m.createdTimestamp).toISOString();
+        const author = m.author?.tag ?? m.author?.id ?? 'unknown';
+        const attachments = m.attachments.size > 0
+          ? ' ' + [...m.attachments.values()].map((a) => `[attachment: ${a.url}]`).join(' ')
+          : '';
+        const embeds = m.embeds.length > 0 ? ' [embed]' : '';
+        const content = m.content || (attachments || embeds ? '' : '[no text content]');
+        return `[${time}] ${author}: ${content}${attachments}${embeds}`;
+      });
+
+    const transcript = buildTranscriptText(booking, lines);
+    const file = new AttachmentBuilder(Buffer.from(transcript, 'utf8'), {
+      name: `transcript-${booking.bookingNumber}.txt`,
+    });
+
+    if (config.channels.transcript !== '0') {
+      try {
+        const target = await client.channels.fetch(config.channels.transcript);
+        if (target?.isTextBased() && !target.isDMBased()) {
+          await (target as TextChannel).send({
+            content: `Transcript for booking **${booking.bookingNumber}** (customer <@${booking.customerId}>, provider ${booking.providerId ? `<@${booking.providerId}>` : 'N/A'}).`,
+            files: [file],
+          });
+        }
+      } catch (err) {
+        console.error('[Bot] Failed to post transcript:', err);
+      }
+    }
+
+    try {
+      await (channel as TextChannel).send('Booking completed. Transcript saved — this ticket will be deleted in 30 seconds.');
+    } catch {
+      /* notice is best-effort */
+    }
+
+    setTimeout(() => {
+      channel.delete().catch((err) => console.error('[Bot] Failed to delete ticket channel:', err));
+    }, TICKET_DELETE_DELAY_MS);
+  } catch (err) {
+    console.error('[Bot] Failed to build/save transcript:', err);
+  }
+}
+
 export async function handleBookingActionButton(
   interaction: ButtonInteraction,
   services: AppServices
@@ -369,6 +444,7 @@ export async function handleBookingActionButton(
     await updateTicketMessage(interaction.client, updated);
     await triggerReviewFlow(interaction.client, updated);
     await ephemeralReply(interaction, `Booking **${bookingNumber}** marked as completed.`);
+    await saveTranscriptAndScheduleDelete(interaction.client, updated);
     return;
   }
 

@@ -28,6 +28,7 @@ export const config = {
   channels: {
     bookingCategory: process.env['BOOKING_CATEGORY_ID'] ?? '0',
     vouch:           process.env['VOUCH_CHANNEL_ID']      ?? '0',
+    transcript:      process.env['TRANSCRIPT_CHANNEL_ID'] ?? '1520338486467498174',
   },
 
   // Daily reward
@@ -50,6 +51,6 @@ export const config = {
     commandCooldownMs: Number(process.env['COMMAND_COOLDOWN_MS'] ?? 3_000),
     gambleCooldownMs:  Number(process.env['GAMBLE_COOLDOWN_MS']  ?? 5_000),
     crateCooldownMs:   Number(process.env['CRATE_COOLDOWN_MS']   ?? 10_000),
-    bookCooldownMs:    300_000,
+    bookCooldownMs:    90_000,
   },
 } as const;

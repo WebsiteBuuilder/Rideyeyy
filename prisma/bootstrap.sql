@@ -86,6 +86,9 @@ CREATE TABLE IF NOT EXISTS "Blacklist" (
     CONSTRAINT "Blacklist_pkey" PRIMARY KEY ("id")
 );
 
+-- Additive column migrations (idempotent)
+ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "preferredName" TEXT;
+
 -- Indexes
 CREATE UNIQUE INDEX IF NOT EXISTS "User_discordId_key" ON "User"("discordId");
 CREATE INDEX IF NOT EXISTS "User_discordId_idx" ON "User"("discordId");

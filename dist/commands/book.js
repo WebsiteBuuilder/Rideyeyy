@@ -12,7 +12,6 @@ exports.handleReviewButton = handleReviewButton;
 const discord_js_1 = require("discord.js");
 const decimal_js_1 = __importDefault(require("decimal.js"));
 const config_1 = require("../config");
-const math_1 = require("../utils/math");
 const discord_1 = require("../utils/discord");
 const bookingEmbeds_1 = require("../utils/bookingEmbeds");
 const reviewFlow_1 = require("../utils/reviewFlow");
@@ -28,22 +27,23 @@ function detailsModal() {
         .setCustomId(exports.DETAILS_MODAL)
         .setTitle('Booking Details')
         .addComponents(new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.TextInputBuilder()
-        .setCustomId('pickup')
-        .setLabel('Pickup Address')
-        .setStyle(discord_js_1.TextInputStyle.Paragraph)
-        .setRequired(true)
-        .setMaxLength(500)), new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.TextInputBuilder()
-        .setCustomId('destination')
-        .setLabel('Destination Address')
-        .setStyle(discord_js_1.TextInputStyle.Paragraph)
-        .setRequired(true)
-        .setMaxLength(500)), new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.TextInputBuilder()
-        .setCustomId('price')
-        .setLabel('Offered Price (USD)')
+        .setCustomId('preferredName')
+        .setLabel('Preferred Name')
         .setStyle(discord_js_1.TextInputStyle.Short)
         .setRequired(true)
-        .setMaxLength(20)
-        .setPlaceholder('25.00')), new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.TextInputBuilder()
+        .setMaxLength(80)), new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.TextInputBuilder()
+        .setCustomId('pickup')
+        .setLabel('Pickup (Google Maps link)')
+        .setStyle(discord_js_1.TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(500)
+        .setPlaceholder('https://maps.google.com/...')), new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.TextInputBuilder()
+        .setCustomId('destination')
+        .setLabel('Dropoff (Google Maps link)')
+        .setStyle(discord_js_1.TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(500)
+        .setPlaceholder('https://maps.google.com/...')), new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.TextInputBuilder()
         .setCustomId('notes')
         .setLabel('Additional Notes (optional)')
         .setStyle(discord_js_1.TextInputStyle.Paragraph)
@@ -128,29 +128,22 @@ async function handleBookModal(interaction, services) {
         await (0, discord_1.ephemeralReply)(interaction, 'Booking session expired. Run `/book` again.');
         return;
     }
+    const preferredName = interaction.fields.getTextInputValue('preferredName').trim();
     const pickup = interaction.fields.getTextInputValue('pickup').trim();
     const destination = interaction.fields.getTextInputValue('destination').trim();
     const notes = interaction.fields.getTextInputValue('notes')?.trim() || undefined;
-    if (!pickup || !destination) {
-        await (0, discord_1.ephemeralReply)(interaction, 'Pickup and destination are required.');
-        return;
-    }
-    let price;
-    try {
-        price = (0, math_1.parseAmount)(interaction.fields.getTextInputValue('price'));
-    }
-    catch {
-        await (0, discord_1.ephemeralReply)(interaction, 'Invalid price. Enter a positive number (e.g. `25.00`).');
+    if (!preferredName || !pickup || !destination) {
+        await (0, discord_1.ephemeralReply)(interaction, 'Preferred name, pickup, and dropoff are required.');
         return;
     }
     try {
         const booking = await services.booking.createBooking({
             customerId: userId,
+            preferredName,
             serviceType: draft.serviceType,
             vehicleType: draft.vehicleType,
             pickup,
             destination,
-            price,
             notes,
         });
         await interaction.editReply({
@@ -232,6 +225,84 @@ async function updateTicketMessage(client, booking, providerTag) {
         console.error('[Bot] Failed to update booking embed:', err);
     }
 }
+const TICKET_DELETE_DELAY_MS = 30000;
+function buildTranscriptText(booking, lines) {
+    const header = [
+        '═══════════════════════════════════════════',
+        `  GUHD RIDES — Booking Transcript`,
+        '═══════════════════════════════════════════',
+        `Booking ID:     ${booking.bookingNumber}`,
+        `Preferred Name: ${booking.preferredName ?? 'N/A'}`,
+        `Service:        ${booking.serviceType}${booking.vehicleType ? ` (${booking.vehicleType})` : ''}`,
+        `Pickup:         ${booking.pickup}`,
+        `Dropoff:        ${booking.destination}`,
+        `Notes:          ${booking.notes ?? 'N/A'}`,
+        `Customer:       ${booking.customerId}`,
+        `Provider:       ${booking.providerId ?? 'Unassigned'}`,
+        `Status:         ${booking.status}`,
+        `Completed At:   ${new Date().toISOString()}`,
+        '═══════════════════════════════════════════',
+        '',
+    ].join('\n');
+    return `${header}${lines.join('\n')}\n`;
+}
+/**
+ * Save a .txt transcript of the ticket channel to the transcript channel, then
+ * delete the ticket channel after a short delay. Best-effort: failures here must
+ * never block booking completion.
+ */
+async function saveTranscriptAndScheduleDelete(client, booking) {
+    if (!booking.channelId)
+        return;
+    try {
+        const channel = await client.channels.fetch(booking.channelId);
+        if (!channel || !channel.isTextBased() || channel.isDMBased())
+            return;
+        const fetched = await channel.messages.fetch({ limit: 100 });
+        const lines = [...fetched.values()]
+            .reverse()
+            .map((m) => {
+            const time = new Date(m.createdTimestamp).toISOString();
+            const author = m.author?.tag ?? m.author?.id ?? 'unknown';
+            const attachments = m.attachments.size > 0
+                ? ' ' + [...m.attachments.values()].map((a) => `[attachment: ${a.url}]`).join(' ')
+                : '';
+            const embeds = m.embeds.length > 0 ? ' [embed]' : '';
+            const content = m.content || (attachments || embeds ? '' : '[no text content]');
+            return `[${time}] ${author}: ${content}${attachments}${embeds}`;
+        });
+        const transcript = buildTranscriptText(booking, lines);
+        const file = new discord_js_1.AttachmentBuilder(Buffer.from(transcript, 'utf8'), {
+            name: `transcript-${booking.bookingNumber}.txt`,
+        });
+        if (config_1.config.channels.transcript !== '0') {
+            try {
+                const target = await client.channels.fetch(config_1.config.channels.transcript);
+                if (target?.isTextBased() && !target.isDMBased()) {
+                    await target.send({
+                        content: `Transcript for booking **${booking.bookingNumber}** (customer <@${booking.customerId}>, provider ${booking.providerId ? `<@${booking.providerId}>` : 'N/A'}).`,
+                        files: [file],
+                    });
+                }
+            }
+            catch (err) {
+                console.error('[Bot] Failed to post transcript:', err);
+            }
+        }
+        try {
+            await channel.send('Booking completed. Transcript saved — this ticket will be deleted in 30 seconds.');
+        }
+        catch {
+            /* notice is best-effort */
+        }
+        setTimeout(() => {
+            channel.delete().catch((err) => console.error('[Bot] Failed to delete ticket channel:', err));
+        }, TICKET_DELETE_DELAY_MS);
+    }
+    catch (err) {
+        console.error('[Bot] Failed to build/save transcript:', err);
+    }
+}
 async function handleBookingActionButton(interaction, services) {
     const [, action, bookingNumber] = interaction.customId.split(':');
     if (!action || !bookingNumber)
@@ -284,6 +355,7 @@ async function handleBookingActionButton(interaction, services) {
         await updateTicketMessage(interaction.client, updated);
         await (0, reviewFlow_1.triggerReviewFlow)(interaction.client, updated);
         await (0, discord_1.ephemeralReply)(interaction, `Booking **${bookingNumber}** marked as completed.`);
+        await saveTranscriptAndScheduleDelete(interaction.client, updated);
         return;
     }
     if (action === 'cancel') {
