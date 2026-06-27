@@ -99,8 +99,6 @@ exports.data = new discord_js_1.SlashCommandBuilder()
     .setName('crate')
     .setDescription('Open reward crates with Route Cash');
 async function execute(interaction, services) {
-    if (!(await (0, discord_1.enforceCasinoChannel)(interaction)))
-        return;
     await interaction.reply({
         embeds: [buildShopEmbed()],
         components: [buildCrateButtons()],

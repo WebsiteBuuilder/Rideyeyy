@@ -15,7 +15,6 @@ import { formatRC } from '../utils/math';
 import {
   ephemeralReply,
   checkCooldown,
-  enforceCasinoChannel,
   COLOR,
   LINE,
   THIN_LINE,
@@ -144,7 +143,6 @@ export async function execute(
   interaction: ChatInputCommandInteraction,
   services: AppServices
 ): Promise<void> {
-  if (!(await enforceCasinoChannel(interaction))) return;
   await interaction.reply({
     embeds: [buildShopEmbed()],
     components: [buildCrateButtons()],
