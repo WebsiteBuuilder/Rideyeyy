@@ -243,7 +243,7 @@ async function handleBlackjack(interaction, services) {
         const row = game.status === 'player_turn'
             ? buildBlackjackButtons(game.gameId, game.canDouble)
             : null;
-        await interaction.reply({ embeds: [embed], components: row ? [row] : [], ephemeral: true });
+        await interaction.reply({ embeds: [embed], components: row ? [row] : [], flags: discord_js_1.MessageFlags.Ephemeral });
     }
     catch (err) {
         if (err instanceof EconomyService_1.InsufficientFundsError) {
@@ -312,15 +312,15 @@ async function handleBlackjackButton(interaction, services) {
     }
     catch (err) {
         if (err instanceof EconomyService_1.InsufficientFundsError) {
-            await interaction.reply({ content: `${discord_1.ICON.loss} Not enough Route Cash to double down.`, ephemeral: true });
+            await interaction.reply({ content: `${discord_1.ICON.loss} Not enough Route Cash to double down.`, flags: discord_js_1.MessageFlags.Ephemeral });
             return;
         }
         const msg = err instanceof Error ? err.message : 'Action failed.';
         if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({ content: msg, ephemeral: true });
+            await interaction.followUp({ content: msg, flags: discord_js_1.MessageFlags.Ephemeral });
         }
         else {
-            await interaction.reply({ content: msg, ephemeral: true });
+            await interaction.reply({ content: msg, flags: discord_js_1.MessageFlags.Ephemeral });
         }
     }
 }

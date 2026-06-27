@@ -5,6 +5,7 @@ import {
   ButtonStyle,
   ChatInputCommandInteraction,
   EmbedBuilder,
+  MessageFlags,
   SlashCommandBuilder,
 } from 'discord.js';
 import type { AppServices, CrateType } from '../types';
@@ -144,7 +145,7 @@ export async function execute(
   await interaction.reply({
     embeds: [buildShopEmbed()],
     components: [buildCrateButtons()],
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 }
 
@@ -185,7 +186,7 @@ export async function handleCrateButton(
   if (cd) {
     await interaction.reply({
       content: `${ICON.time} You're opening crates too fast — wait **${cd}s** before trying again.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -196,7 +197,7 @@ export async function handleCrateButton(
     await services.user.ensureUser(interaction.user.id);
     const guildId = interaction.guildId ?? interaction.guild?.id;
     if (!guildId) {
-      await interaction.reply({ content: `${ICON.loss} This command must be used in a server.`, ephemeral: true });
+      await interaction.reply({ content: `${ICON.loss} This command must be used in a server.`, flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -250,13 +251,13 @@ export async function handleCrateButton(
         
       await interaction.reply({
         embeds: [embed],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     await interaction.reply({
       content: err instanceof Error ? err.message : `${ICON.loss} Failed to open crate.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 }

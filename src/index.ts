@@ -47,7 +47,7 @@ const client = new Client({
 //  SLASH COMMAND REGISTRATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function registerCommands(): Promise<void> {
+async function registerCommands(client: Client): Promise<void> {
   const commands = [
     Economy.data,
     Economy.payData,
@@ -69,12 +69,24 @@ async function registerCommands(): Promise<void> {
   ].map((c) => c.toJSON());
 
   const rest = new REST().setToken(config.token);
-  const route = config.guildId
-    ? Routes.applicationGuildCommands(config.clientId, config.guildId)
-    : Routes.applicationCommands(config.clientId);
 
-  await rest.put(route, { body: commands });
-  console.log(`[Bot] Registered ${commands.length} slash commands.`);
+  if (config.guildId) {
+    // Register to the guild for instant availability, and clear the GLOBAL
+    // scope so commands don't appear twice (a global + a guild copy).
+    await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body: commands });
+    await rest.put(Routes.applicationCommands(config.clientId), { body: [] });
+    console.log(`[Bot] Registered ${commands.length} guild commands (cleared global scope).`);
+  } else {
+    // Global-only registration, and clear any stale per-guild commands left
+    // over from a previous guild-scoped deploy (avoids duplicate entries).
+    await rest.put(Routes.applicationCommands(config.clientId), { body: commands });
+    for (const guild of client.guilds.cache.values()) {
+      await rest
+        .put(Routes.applicationGuildCommands(config.clientId, guild.id), { body: [] })
+        .catch(() => { /* missing access to a guild is non-fatal */ });
+    }
+    console.log(`[Bot] Registered ${commands.length} global commands (cleared guild scopes).`);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -169,7 +181,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
 client.once(Events.ClientReady, async (c) => {
   console.log(`[Bot] Logged in as ${c.user.tag}`);
   try {
-    await registerCommands();
+    await registerCommands(c);
   } catch (err) {
     console.error('[Bot] Failed to register commands:', err);
   }

@@ -74,7 +74,7 @@ const client = new discord_js_1.Client({
 // ═══════════════════════════════════════════════════════════════════════════
 //  SLASH COMMAND REGISTRATION
 // ═══════════════════════════════════════════════════════════════════════════
-async function registerCommands() {
+async function registerCommands(client) {
     const commands = [
         Economy.data,
         Economy.payData,
@@ -95,11 +95,24 @@ async function registerCommands() {
         Blacklist.data,
     ].map((c) => c.toJSON());
     const rest = new discord_js_1.REST().setToken(config_1.config.token);
-    const route = config_1.config.guildId
-        ? discord_js_1.Routes.applicationGuildCommands(config_1.config.clientId, config_1.config.guildId)
-        : discord_js_1.Routes.applicationCommands(config_1.config.clientId);
-    await rest.put(route, { body: commands });
-    console.log(`[Bot] Registered ${commands.length} slash commands.`);
+    if (config_1.config.guildId) {
+        // Register to the guild for instant availability, and clear the GLOBAL
+        // scope so commands don't appear twice (a global + a guild copy).
+        await rest.put(discord_js_1.Routes.applicationGuildCommands(config_1.config.clientId, config_1.config.guildId), { body: commands });
+        await rest.put(discord_js_1.Routes.applicationCommands(config_1.config.clientId), { body: [] });
+        console.log(`[Bot] Registered ${commands.length} guild commands (cleared global scope).`);
+    }
+    else {
+        // Global-only registration, and clear any stale per-guild commands left
+        // over from a previous guild-scoped deploy (avoids duplicate entries).
+        await rest.put(discord_js_1.Routes.applicationCommands(config_1.config.clientId), { body: commands });
+        for (const guild of client.guilds.cache.values()) {
+            await rest
+                .put(discord_js_1.Routes.applicationGuildCommands(config_1.config.clientId, guild.id), { body: [] })
+                .catch(() => { });
+        }
+        console.log(`[Bot] Registered ${commands.length} global commands (cleared guild scopes).`);
+    }
 }
 // ═══════════════════════════════════════════════════════════════════════════
 //  INTERACTION HANDLER
@@ -225,7 +238,7 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
 client.once(discord_js_1.Events.ClientReady, async (c) => {
     console.log(`[Bot] Logged in as ${c.user.tag}`);
     try {
-        await registerCommands();
+        await registerCommands(c);
     }
     catch (err) {
         console.error('[Bot] Failed to register commands:', err);

@@ -5,6 +5,7 @@ import {
   ButtonStyle,
   ChatInputCommandInteraction,
   EmbedBuilder,
+  MessageFlags,
   SlashCommandBuilder,
 } from 'discord.js';
 import Decimal from 'decimal.js';
@@ -358,7 +359,7 @@ export async function handleBlackjack(
       ? buildBlackjackButtons(game.gameId, game.canDouble)
       : null;
 
-    await interaction.reply({ embeds: [embed], components: row ? [row] : [], ephemeral: true });
+    await interaction.reply({ embeds: [embed], components: row ? [row] : [], flags: MessageFlags.Ephemeral });
   } catch (err) {
     if (err instanceof InsufficientFundsError) {
       await ephemeralReply(interaction, `${ICON.loss} Not enough Route Cash for that bet.`);
@@ -451,14 +452,14 @@ export async function handleBlackjackButton(
     }
   } catch (err) {
     if (err instanceof InsufficientFundsError) {
-      await interaction.reply({ content: `${ICON.loss} Not enough Route Cash to double down.`, ephemeral: true });
+      await interaction.reply({ content: `${ICON.loss} Not enough Route Cash to double down.`, flags: MessageFlags.Ephemeral });
       return;
     }
     const msg = err instanceof Error ? err.message : 'Action failed.';
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: msg, ephemeral: true });
+      await interaction.followUp({ content: msg, flags: MessageFlags.Ephemeral });
     } else {
-      await interaction.reply({ content: msg, ephemeral: true });
+      await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
     }
   }
 }

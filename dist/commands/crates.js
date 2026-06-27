@@ -102,7 +102,7 @@ async function execute(interaction, services) {
     await interaction.reply({
         embeds: [buildShopEmbed()],
         components: [buildCrateButtons()],
-        ephemeral: true,
+        flags: discord_js_1.MessageFlags.Ephemeral,
     });
 }
 // ---------------------------------------------------------------------------
@@ -135,7 +135,7 @@ async function handleCrateButton(interaction, services) {
     if (cd) {
         await interaction.reply({
             content: `${discord_1.ICON.time} You're opening crates too fast — wait **${cd}s** before trying again.`,
-            ephemeral: true,
+            flags: discord_js_1.MessageFlags.Ephemeral,
         });
         return;
     }
@@ -144,7 +144,7 @@ async function handleCrateButton(interaction, services) {
         await services.user.ensureUser(interaction.user.id);
         const guildId = interaction.guildId ?? interaction.guild?.id;
         if (!guildId) {
-            await interaction.reply({ content: `${discord_1.ICON.loss} This command must be used in a server.`, ephemeral: true });
+            await interaction.reply({ content: `${discord_1.ICON.loss} This command must be used in a server.`, flags: discord_js_1.MessageFlags.Ephemeral });
             return;
         }
         const rewards = await services.crate.openCrate(interaction.user.id, crateType, interaction.client, guildId);
@@ -186,13 +186,13 @@ async function handleCrateButton(interaction, services) {
                 .setFooter({ text: `${discord_1.BRAND.name}  ·  ${discord_1.BRAND.tagline}` });
             await interaction.reply({
                 embeds: [embed],
-                ephemeral: true,
+                flags: discord_js_1.MessageFlags.Ephemeral,
             });
             return;
         }
         await interaction.reply({
             content: err instanceof Error ? err.message : `${discord_1.ICON.loss} Failed to open crate.`,
-            ephemeral: true,
+            flags: discord_js_1.MessageFlags.Ephemeral,
         });
     }
 }
