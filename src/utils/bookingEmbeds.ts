@@ -39,13 +39,10 @@ export function bookingChannelName(bookingNumber: string): string {
   return `booking-${bookingNumber.replace(/-/g, '').toLowerCase()}`;
 }
 
-function isUrl(value: string): boolean {
-  return /^https?:\/\/\S+$/i.test(value.trim());
-}
-
-/** Render a location as a masked clickable link when it's a URL, else raw text. */
+/** Render a location as raw, copyable monospace text (not a clickable link). */
 function locationValue(value: string): string {
-  return isUrl(value) ? `[Open in Google Maps](${value.trim()})` : value;
+  const trimmed = value.trim();
+  return trimmed ? `\`${trimmed}\`` : value;
 }
 
 export function buildBookingEmbed(
