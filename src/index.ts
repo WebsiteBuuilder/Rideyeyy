@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, REST, Routes, Events, Interaction, ButtonInteraction, ModalSubmitInteraction, MessageFlags } from 'discord.js';
+import { Client, GatewayIntentBits, REST, Routes, Events, Interaction, ButtonInteraction, ModalSubmitInteraction, StringSelectMenuInteraction, MessageFlags } from 'discord.js';
 import { config } from './config';
 import type { AppServices } from './types';
 import { prisma } from './lib/prisma';
@@ -11,6 +11,7 @@ import { GamblingService } from './services/GamblingService';
 import { BookingService } from './services/BookingService';
 import { ProviderStatsService } from './services/ProviderStatsService';
 import { BlacklistService } from './services/BlacklistService';
+import { InviteService } from './services/invite/InviteService';
 
 // Command handlers
 import * as Economy  from './commands/economy';
@@ -21,6 +22,8 @@ import * as ProviderStats from './commands/provider-stats';
 import * as ProviderLeaderboard from './commands/provider-leaderboard';
 import * as Blacklist from './commands/blacklist';
 import * as Panels from './commands/panels';
+import * as Invite from './commands/invite';
+import * as InviteAdmin from './commands/inviteAdmin';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
@@ -34,6 +37,7 @@ const services: AppServices = {
   booking:  new BookingService(),
   providerStats: new ProviderStatsService(),
   blacklist: new BlacklistService(),
+  invite: new InviteService(),
 };
 
 const client = new Client({
@@ -42,6 +46,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildInvites,
   ],
 });
 
@@ -71,6 +76,9 @@ async function registerCommands(client: Client): Promise<void> {
     Panels.inviteData,
     Panels.howtoData,
     Panels.orderPanelData,
+    Invite.inviteUserData,
+    Invite.invitesLeaderboardData,
+    InviteAdmin.inviteAdminData,
   ].map((c) => c.toJSON());
 
   const rest = new REST().setToken(config.token);
@@ -125,6 +133,24 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         await Book.handleReviewButton(btn, services);
         return;
       }
+      if (id.startsWith('invlb:')) {
+        await Invite.handleLeaderboardButton(btn, services);
+        return;
+      }
+      if (id.startsWith('invadm:')) {
+        await InviteAdmin.handleAdminButton(btn, services);
+        return;
+      }
+      return;
+    }
+
+    // ── Select menu interactions ─────────────────────────────────────────
+    if (interaction.isStringSelectMenu()) {
+      const select = interaction as StringSelectMenuInteraction;
+      if (select.customId === 'invadm:nav') {
+        await InviteAdmin.handleAdminSelect(select, services);
+        return;
+      }
       return;
     }
 
@@ -137,6 +163,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       }
       if (modal.customId.startsWith('panel-edit:')) {
         await Panels.handlePanelModal(modal);
+        return;
+      }
+      if (modal.customId.startsWith('invadm:modal:')) {
+        await InviteAdmin.handleAdminModal(modal, services);
         return;
       }
       return;
@@ -166,6 +196,9 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       case 'invitepanel':  await Panels.handleInvite(interaction);                 break;
       case 'howto':        await Panels.handleHowto(interaction);                  break;
       case 'orderpanel':   await Panels.handleOrderPanel(interaction);            break;
+      case 'invite':       await Invite.handleInvite(interaction, services);       break;
+      case 'invites':      await Invite.handleInviteLeaderboard(interaction, services); break;
+      case 'invite-admin': await InviteAdmin.handleInviteAdmin(interaction, services); break;
       default:
         console.warn(`[Bot] Unknown command: ${interaction.commandName}`);
     }
@@ -190,6 +223,55 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
 //  STARTUP
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ── Invite tracking events ─────────────────────────────────────────────────
+client.on(Events.GuildMemberAdd, async (member) => {
+  try {
+    await services.invite.handleMemberAdd(member);
+  } catch (err) {
+    console.error('[Bot] guildMemberAdd error:', err);
+  }
+});
+
+client.on(Events.GuildMemberRemove, async (member) => {
+  try {
+    await services.invite.handleMemberRemove(member);
+  } catch (err) {
+    console.error('[Bot] guildMemberRemove error:', err);
+  }
+});
+
+client.on(Events.InviteCreate, (invite) => {
+  try {
+    services.invite.handleInviteCreate(invite);
+  } catch (err) {
+    console.error('[Bot] inviteCreate error:', err);
+  }
+});
+
+client.on(Events.InviteDelete, (invite) => {
+  try {
+    services.invite.handleInviteDelete(invite);
+  } catch (err) {
+    console.error('[Bot] inviteDelete error:', err);
+  }
+});
+
+client.on(Events.GuildCreate, async (guild) => {
+  try {
+    await services.invite.handleGuildCreate(guild);
+  } catch (err) {
+    console.error('[Bot] guildCreate error:', err);
+  }
+});
+
+client.on(Events.GuildDelete, (guild) => {
+  try {
+    services.invite.handleGuildDelete(guild);
+  } catch (err) {
+    console.error('[Bot] guildDelete error:', err);
+  }
+});
+
 client.once(Events.ClientReady, async (c) => {
   console.log(`[Bot] Logged in as ${c.user.tag}`);
   // Warm the DB connection pool so the first command query doesn't risk the
@@ -204,6 +286,13 @@ client.once(Events.ClientReady, async (c) => {
     await registerCommands(c);
   } catch (err) {
     console.error('[Bot] Failed to register commands:', err);
+  }
+  // Prime the invite cache, seed config/milestones, and start the verification
+  // sweep. Best-effort so a missing Manage Server permission won't crash boot.
+  try {
+    await services.invite.init(c);
+  } catch (err) {
+    console.error('[Bot] Failed to initialise invite system:', err);
   }
 });
 

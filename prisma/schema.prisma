@@ -131,3 +131,180 @@ model Panel {
 
   @@index([key])
 }
+
+// ───────────────────────────── Invite Reward System ─────────────────────────
+
+enum InviteStatus {
+  PENDING
+  VERIFIED
+  REWARDED
+  FAKE
+  REJECTED
+}
+
+enum InviteFakeReason {
+  ALT_ACCOUNT
+  LEFT_EARLY
+  SELF_INVITE
+  PREVIOUS_MEMBER
+  BOT
+  BAN_EVASION
+  RATE_LIMIT
+  MANUAL
+  CAP
+}
+
+enum InviteRewardType {
+  INVITE
+  MILESTONE
+  MANUAL
+}
+
+model InviteConfig {
+  id                   String   @id @default(cuid())
+  guildId              String   @unique
+  rewardAmount         Int      @default(250)
+  verificationDelaySec Int      @default(600)
+  minAccountAgeDays    Int      @default(7)
+  dailyCap             Int      @default(0)
+  weeklyCap            Int      @default(0)
+  monthlyCap           Int      @default(0)
+  maxRewardsPerInviter Int      @default(0)
+  antiAltEnabled       Boolean  @default(true)
+  rewardEnabled        Boolean  @default(true)
+  milestonesEnabled    Boolean  @default(true)
+  loggingChannelId     String?
+  announceChannelId    String?
+  autoAnnounce         Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([guildId])
+}
+
+model InviteCode {
+  id        String   @id @default(cuid())
+  guildId   String
+  code      String
+  inviterId String?
+  uses      Int      @default(0)
+  isVanity  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([guildId, code])
+  @@index([guildId])
+  @@index([inviterId])
+}
+
+model InviteJoin {
+  id               String            @id @default(cuid())
+  guildId          String
+  invitedUserId    String
+  inviterUserId    String?
+  inviteCode       String?
+  status           InviteStatus      @default(PENDING)
+  fakeReason       InviteFakeReason?
+  accountCreatedAt DateTime?
+  joinedAt         DateTime          @default(now())
+  verifyAt         DateTime
+  verifiedAt       DateTime?
+  leftAt           DateTime?
+  rewarded         Boolean           @default(false)
+  rewardAmount     Int?
+  rewardTxnRef     String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([guildId, inviterUserId])
+  @@index([guildId, invitedUserId])
+  @@index([guildId, status])
+  @@index([guildId, verifyAt])
+}
+
+model InviteUserStats {
+  id                  String    @id @default(cuid())
+  guildId             String
+  userId              String
+  verified            Int       @default(0)
+  fake                Int       @default(0)
+  pending             Int       @default(0)
+  lifetime            Int       @default(0)
+  rcEarned            Decimal   @default(0) @db.Decimal(18, 2)
+  milestonesCompleted Int       @default(0)
+  lastInviteAt        DateTime?
+  streak              Int       @default(0)
+  weeklyCount         Int       @default(0)
+  monthlyCount        Int       @default(0)
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([guildId, userId])
+  @@index([guildId, verified])
+}
+
+model InviteReward {
+  id            String           @id @default(cuid())
+  guildId       String
+  inviterUserId String
+  invitedUserId String?
+  joinId        String?
+  amount        Decimal          @db.Decimal(18, 2)
+  type          InviteRewardType @default(INVITE)
+  reason        String
+  createdAt     DateTime         @default(now())
+
+  @@index([guildId, inviterUserId])
+  @@index([guildId, type])
+}
+
+model InviteMilestone {
+  id           String   @id @default(cuid())
+  guildId      String
+  threshold    Int
+  rewardAmount Int      @default(0)
+  rewardRoleId String?
+  label        String?
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([guildId, threshold])
+  @@index([guildId])
+}
+
+model InviteMilestoneAward {
+  id          String   @id @default(cuid())
+  guildId     String
+  userId      String
+  milestoneId String
+  awardedAt   DateTime @default(now())
+
+  @@unique([guildId, userId, milestoneId])
+  @@index([guildId, userId])
+}
+
+model InviteLog {
+  id           String   @id @default(cuid())
+  guildId      String
+  event        String
+  actorId      String?
+  targetUserId String?
+  inviteCode   String?
+  joinId       String?
+  detail       String?
+  createdAt    DateTime @default(now())
+
+  @@index([guildId, createdAt])
+  @@index([guildId, event])
+}
+
+model InviteResetHistory {
+  id          String   @id @default(cuid())
+  guildId     String
+  type        String
+  performedBy String
+  detail      String?
+  createdAt   DateTime @default(now())
+
+  @@index([guildId])
+}

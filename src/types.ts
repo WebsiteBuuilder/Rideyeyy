@@ -207,4 +207,5 @@ export interface AppServices {
   booking:  IBookingService;
   providerStats: IProviderStatsService;
   blacklist: IBlacklistService;
+  invite:   import('./services/invite/InviteService').InviteService;
 }

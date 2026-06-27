@@ -44,6 +44,7 @@ const GamblingService_1 = require("./services/GamblingService");
 const BookingService_1 = require("./services/BookingService");
 const ProviderStatsService_1 = require("./services/ProviderStatsService");
 const BlacklistService_1 = require("./services/BlacklistService");
+const InviteService_1 = require("./services/invite/InviteService");
 // Command handlers
 const Economy = __importStar(require("./commands/economy"));
 const Crates = __importStar(require("./commands/crates"));
@@ -53,6 +54,8 @@ const ProviderStats = __importStar(require("./commands/provider-stats"));
 const ProviderLeaderboard = __importStar(require("./commands/provider-leaderboard"));
 const Blacklist = __importStar(require("./commands/blacklist"));
 const Panels = __importStar(require("./commands/panels"));
+const Invite = __importStar(require("./commands/invite"));
+const InviteAdmin = __importStar(require("./commands/inviteAdmin"));
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
 // ═══════════════════════════════════════════════════════════════════════════
@@ -64,6 +67,7 @@ const services = {
     booking: new BookingService_1.BookingService(),
     providerStats: new ProviderStatsService_1.ProviderStatsService(),
     blacklist: new BlacklistService_1.BlacklistService(),
+    invite: new InviteService_1.InviteService(),
 };
 const client = new discord_js_1.Client({
     intents: [
@@ -71,6 +75,7 @@ const client = new discord_js_1.Client({
         discord_js_1.GatewayIntentBits.GuildMessages,
         discord_js_1.GatewayIntentBits.GuildVoiceStates,
         discord_js_1.GatewayIntentBits.GuildMembers,
+        discord_js_1.GatewayIntentBits.GuildInvites,
     ],
 });
 // ═══════════════════════════════════════════════════════════════════════════
@@ -98,6 +103,9 @@ async function registerCommands(client) {
         Panels.inviteData,
         Panels.howtoData,
         Panels.orderPanelData,
+        Invite.inviteUserData,
+        Invite.invitesLeaderboardData,
+        InviteAdmin.inviteAdminData,
     ].map((c) => c.toJSON());
     const rest = new discord_js_1.REST().setToken(config_1.config.token);
     if (config_1.config.guildId) {
@@ -148,6 +156,23 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
                 await Book.handleReviewButton(btn, services);
                 return;
             }
+            if (id.startsWith('invlb:')) {
+                await Invite.handleLeaderboardButton(btn, services);
+                return;
+            }
+            if (id.startsWith('invadm:')) {
+                await InviteAdmin.handleAdminButton(btn, services);
+                return;
+            }
+            return;
+        }
+        // ── Select menu interactions ─────────────────────────────────────────
+        if (interaction.isStringSelectMenu()) {
+            const select = interaction;
+            if (select.customId === 'invadm:nav') {
+                await InviteAdmin.handleAdminSelect(select, services);
+                return;
+            }
             return;
         }
         // ── Modal submissions ────────────────────────────────────────────────
@@ -159,6 +184,10 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             }
             if (modal.customId.startsWith('panel-edit:')) {
                 await Panels.handlePanelModal(modal);
+                return;
+            }
+            if (modal.customId.startsWith('invadm:modal:')) {
+                await InviteAdmin.handleAdminModal(modal, services);
                 return;
             }
             return;
@@ -227,6 +256,15 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             case 'orderpanel':
                 await Panels.handleOrderPanel(interaction);
                 break;
+            case 'invite':
+                await Invite.handleInvite(interaction, services);
+                break;
+            case 'invites':
+                await Invite.handleInviteLeaderboard(interaction, services);
+                break;
+            case 'invite-admin':
+                await InviteAdmin.handleInviteAdmin(interaction, services);
+                break;
             default:
                 console.warn(`[Bot] Unknown command: ${interaction.commandName}`);
         }
@@ -253,6 +291,55 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
 // ═══════════════════════════════════════════════════════════════════════════
 //  STARTUP
 // ═══════════════════════════════════════════════════════════════════════════
+// ── Invite tracking events ─────────────────────────────────────────────────
+client.on(discord_js_1.Events.GuildMemberAdd, async (member) => {
+    try {
+        await services.invite.handleMemberAdd(member);
+    }
+    catch (err) {
+        console.error('[Bot] guildMemberAdd error:', err);
+    }
+});
+client.on(discord_js_1.Events.GuildMemberRemove, async (member) => {
+    try {
+        await services.invite.handleMemberRemove(member);
+    }
+    catch (err) {
+        console.error('[Bot] guildMemberRemove error:', err);
+    }
+});
+client.on(discord_js_1.Events.InviteCreate, (invite) => {
+    try {
+        services.invite.handleInviteCreate(invite);
+    }
+    catch (err) {
+        console.error('[Bot] inviteCreate error:', err);
+    }
+});
+client.on(discord_js_1.Events.InviteDelete, (invite) => {
+    try {
+        services.invite.handleInviteDelete(invite);
+    }
+    catch (err) {
+        console.error('[Bot] inviteDelete error:', err);
+    }
+});
+client.on(discord_js_1.Events.GuildCreate, async (guild) => {
+    try {
+        await services.invite.handleGuildCreate(guild);
+    }
+    catch (err) {
+        console.error('[Bot] guildCreate error:', err);
+    }
+});
+client.on(discord_js_1.Events.GuildDelete, (guild) => {
+    try {
+        services.invite.handleGuildDelete(guild);
+    }
+    catch (err) {
+        console.error('[Bot] guildDelete error:', err);
+    }
+});
 client.once(discord_js_1.Events.ClientReady, async (c) => {
     console.log(`[Bot] Logged in as ${c.user.tag}`);
     // Warm the DB connection pool so the first command query doesn't risk the
@@ -269,6 +356,14 @@ client.once(discord_js_1.Events.ClientReady, async (c) => {
     }
     catch (err) {
         console.error('[Bot] Failed to register commands:', err);
+    }
+    // Prime the invite cache, seed config/milestones, and start the verification
+    // sweep. Best-effort so a missing Manage Server permission won't crash boot.
+    try {
+        await services.invite.init(c);
+    }
+    catch (err) {
+        console.error('[Bot] Failed to initialise invite system:', err);
     }
 });
 client.login(config_1.config.token).catch((err) => {

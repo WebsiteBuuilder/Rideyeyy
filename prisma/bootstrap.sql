@@ -16,6 +16,18 @@ DO $$ BEGIN
   CREATE TYPE "VehicleType" AS ENUM ('REGULAR', 'COMFORT', 'XL');
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
+DO $$ BEGIN
+  CREATE TYPE "InviteStatus" AS ENUM ('PENDING', 'VERIFIED', 'REWARDED', 'FAKE', 'REJECTED');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "InviteFakeReason" AS ENUM ('ALT_ACCOUNT', 'LEFT_EARLY', 'SELF_INVITE', 'PREVIOUS_MEMBER', 'BOT', 'BAN_EVASION', 'RATE_LIMIT', 'MANUAL', 'CAP');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "InviteRewardType" AS ENUM ('INVITE', 'MILESTONE', 'MANUAL');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
 -- Tables
 CREATE TABLE IF NOT EXISTS "User" (
     "id" TEXT NOT NULL,
@@ -97,6 +109,137 @@ CREATE TABLE IF NOT EXISTS "Panel" (
     CONSTRAINT "Panel_pkey" PRIMARY KEY ("id")
 );
 
+-- Invite Reward System tables
+CREATE TABLE IF NOT EXISTS "InviteConfig" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "rewardAmount" INTEGER NOT NULL DEFAULT 250,
+    "verificationDelaySec" INTEGER NOT NULL DEFAULT 600,
+    "minAccountAgeDays" INTEGER NOT NULL DEFAULT 7,
+    "dailyCap" INTEGER NOT NULL DEFAULT 0,
+    "weeklyCap" INTEGER NOT NULL DEFAULT 0,
+    "monthlyCap" INTEGER NOT NULL DEFAULT 0,
+    "maxRewardsPerInviter" INTEGER NOT NULL DEFAULT 0,
+    "antiAltEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "rewardEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "milestonesEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "loggingChannelId" TEXT,
+    "announceChannelId" TEXT,
+    "autoAnnounce" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "InviteConfig_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "InviteCode" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "inviterId" TEXT,
+    "uses" INTEGER NOT NULL DEFAULT 0,
+    "isVanity" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "InviteCode_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "InviteJoin" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "invitedUserId" TEXT NOT NULL,
+    "inviterUserId" TEXT,
+    "inviteCode" TEXT,
+    "status" "InviteStatus" NOT NULL DEFAULT 'PENDING',
+    "fakeReason" "InviteFakeReason",
+    "accountCreatedAt" TIMESTAMP(3),
+    "joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "verifyAt" TIMESTAMP(3) NOT NULL,
+    "verifiedAt" TIMESTAMP(3),
+    "leftAt" TIMESTAMP(3),
+    "rewarded" BOOLEAN NOT NULL DEFAULT false,
+    "rewardAmount" INTEGER,
+    "rewardTxnRef" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "InviteJoin_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "InviteUserStats" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "verified" INTEGER NOT NULL DEFAULT 0,
+    "fake" INTEGER NOT NULL DEFAULT 0,
+    "pending" INTEGER NOT NULL DEFAULT 0,
+    "lifetime" INTEGER NOT NULL DEFAULT 0,
+    "rcEarned" DECIMAL(18,2) NOT NULL DEFAULT 0,
+    "milestonesCompleted" INTEGER NOT NULL DEFAULT 0,
+    "lastInviteAt" TIMESTAMP(3),
+    "streak" INTEGER NOT NULL DEFAULT 0,
+    "weeklyCount" INTEGER NOT NULL DEFAULT 0,
+    "monthlyCount" INTEGER NOT NULL DEFAULT 0,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "InviteUserStats_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "InviteReward" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "inviterUserId" TEXT NOT NULL,
+    "invitedUserId" TEXT,
+    "joinId" TEXT,
+    "amount" DECIMAL(18,2) NOT NULL,
+    "type" "InviteRewardType" NOT NULL DEFAULT 'INVITE',
+    "reason" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "InviteReward_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "InviteMilestone" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "threshold" INTEGER NOT NULL,
+    "rewardAmount" INTEGER NOT NULL DEFAULT 0,
+    "rewardRoleId" TEXT,
+    "label" TEXT,
+    "enabled" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "InviteMilestone_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "InviteMilestoneAward" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "milestoneId" TEXT NOT NULL,
+    "awardedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "InviteMilestoneAward_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "InviteLog" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "event" TEXT NOT NULL,
+    "actorId" TEXT,
+    "targetUserId" TEXT,
+    "inviteCode" TEXT,
+    "joinId" TEXT,
+    "detail" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "InviteLog_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "InviteResetHistory" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "performedBy" TEXT NOT NULL,
+    "detail" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "InviteResetHistory_pkey" PRIMARY KEY ("id")
+);
+
 -- Additive column migrations (idempotent)
 ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "preferredName" TEXT;
 
@@ -118,6 +261,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Blacklist_discordId_key" ON "Blacklist"("disc
 CREATE INDEX IF NOT EXISTS "Blacklist_discordId_idx" ON "Blacklist"("discordId");
 CREATE UNIQUE INDEX IF NOT EXISTS "Panel_key_key" ON "Panel"("key");
 CREATE INDEX IF NOT EXISTS "Panel_key_idx" ON "Panel"("key");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "InviteConfig_guildId_key" ON "InviteConfig"("guildId");
+CREATE INDEX IF NOT EXISTS "InviteConfig_guildId_idx" ON "InviteConfig"("guildId");
+CREATE UNIQUE INDEX IF NOT EXISTS "InviteCode_guildId_code_key" ON "InviteCode"("guildId", "code");
+CREATE INDEX IF NOT EXISTS "InviteCode_guildId_idx" ON "InviteCode"("guildId");
+CREATE INDEX IF NOT EXISTS "InviteCode_inviterId_idx" ON "InviteCode"("inviterId");
+CREATE INDEX IF NOT EXISTS "InviteJoin_guildId_inviterUserId_idx" ON "InviteJoin"("guildId", "inviterUserId");
+CREATE INDEX IF NOT EXISTS "InviteJoin_guildId_invitedUserId_idx" ON "InviteJoin"("guildId", "invitedUserId");
+CREATE INDEX IF NOT EXISTS "InviteJoin_guildId_status_idx" ON "InviteJoin"("guildId", "status");
+CREATE INDEX IF NOT EXISTS "InviteJoin_guildId_verifyAt_idx" ON "InviteJoin"("guildId", "verifyAt");
+CREATE UNIQUE INDEX IF NOT EXISTS "InviteUserStats_guildId_userId_key" ON "InviteUserStats"("guildId", "userId");
+CREATE INDEX IF NOT EXISTS "InviteUserStats_guildId_verified_idx" ON "InviteUserStats"("guildId", "verified");
+CREATE INDEX IF NOT EXISTS "InviteReward_guildId_inviterUserId_idx" ON "InviteReward"("guildId", "inviterUserId");
+CREATE INDEX IF NOT EXISTS "InviteReward_guildId_type_idx" ON "InviteReward"("guildId", "type");
+CREATE UNIQUE INDEX IF NOT EXISTS "InviteMilestone_guildId_threshold_key" ON "InviteMilestone"("guildId", "threshold");
+CREATE INDEX IF NOT EXISTS "InviteMilestone_guildId_idx" ON "InviteMilestone"("guildId");
+CREATE UNIQUE INDEX IF NOT EXISTS "InviteMilestoneAward_guildId_userId_milestoneId_key" ON "InviteMilestoneAward"("guildId", "userId", "milestoneId");
+CREATE INDEX IF NOT EXISTS "InviteMilestoneAward_guildId_userId_idx" ON "InviteMilestoneAward"("guildId", "userId");
+CREATE INDEX IF NOT EXISTS "InviteLog_guildId_createdAt_idx" ON "InviteLog"("guildId", "createdAt");
+CREATE INDEX IF NOT EXISTS "InviteLog_guildId_event_idx" ON "InviteLog"("guildId", "event");
+CREATE INDEX IF NOT EXISTS "InviteResetHistory_guildId_idx" ON "InviteResetHistory"("guildId");
 
 -- Foreign keys (ADD CONSTRAINT has no IF NOT EXISTS, so guard against duplicate_object)
 DO $$ BEGIN

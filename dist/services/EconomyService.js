@@ -91,13 +91,14 @@ class EconomyService {
     `;
     }
     async getValidInviteCount(userId) {
-        const rows = await prisma_1.prisma.$queryRaw `
-      SELECT COUNT(*)::int AS count
-      FROM invite_tracking
-      WHERE inviter_user_id = ${userId}::bigint
-        AND redeem_status <> 'pending'
-    `;
-        return rows[0]?.count ?? 0;
+        // Single source of truth: the bot's own invite system. Counts invites that
+        // passed verification (verified or rewarded) across all tracked guilds.
+        return prisma_1.prisma.inviteJoin.count({
+            where: {
+                inviterUserId: userId,
+                status: { in: ['VERIFIED', 'REWARDED'] },
+            },
+        });
     }
 }
 exports.EconomyService = EconomyService;

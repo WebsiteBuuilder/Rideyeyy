@@ -55,4 +55,22 @@ export const config = {
     crateCooldownMs:   Number(process.env['CRATE_COOLDOWN_MS']   ?? 10_000),
     bookCooldownMs:    90_000,
   },
+
+  // Invite reward system — defaults used to seed InviteConfig on first run.
+  // After seeding, live values are read from the InviteConfig table and are
+  // editable via /invite-admin.
+  invite: {
+    sweepIntervalMs:          Number(process.env['INVITE_SWEEP_INTERVAL_MS']    ?? 30_000),
+    defaultReward:            Number(process.env['INVITE_REWARD']               ?? 250),
+    defaultVerifyDelaySec:    Number(process.env['INVITE_VERIFY_DELAY_SEC']     ?? 600),
+    defaultMinAccountAgeDays: Number(process.env['INVITE_MIN_ACCOUNT_AGE_DAYS'] ?? 7),
+    // Default milestone ladder (threshold -> RouteCash) seeded once if none exist.
+    defaultMilestones: [
+      { threshold: 5,   rewardAmount: 500,   label: 'Recruiter' },
+      { threshold: 10,  rewardAmount: 1000,  label: 'Connector' },
+      { threshold: 25,  rewardAmount: 3000,  label: 'Influencer' },
+      { threshold: 50,  rewardAmount: 10000, label: 'Ambassador' },
+      { threshold: 100, rewardAmount: 25000, label: 'Legend' },
+    ],
+  },
 } as const;
