@@ -212,4 +212,5 @@ export interface AppServices {
   shop:       import('./services/economy/ShopService').ShopService;
   lottery:    import('./services/economy/LotteryService').LotteryService;
   activity:   import('./services/economy/ActivityService').ActivityService;
+  memberVerify: import('./services/verify/MemberVerifyService').MemberVerifyService;
 }

@@ -136,7 +136,7 @@ function buildPanelMessage(key: PanelKey, content: string): {
 }
 
 /** Edit the existing panel message if present; otherwise post a fresh one. */
-async function publishPanel(
+export async function publishPanel(
   client: Client,
   key: string,
   channelId: string,

@@ -12,6 +12,7 @@ import { BookingService } from './services/BookingService';
 import { ProviderStatsService } from './services/ProviderStatsService';
 import { BlacklistService } from './services/BlacklistService';
 import { InviteService } from './services/invite/InviteService';
+import { MemberVerifyService } from './services/verify/MemberVerifyService';
 import { EconomyServices } from './services/economy/EconomyServices';
 import { SchedulerService } from './services/economy/SchedulerService';
 
@@ -28,6 +29,7 @@ import * as Invite from './commands/invite';
 import * as Admin from './commands/inviteAdmin';
 import * as Referral from './commands/referral';
 import * as Shop from './commands/shop';
+import * as VerifyPanel from './commands/verifyPanel';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
@@ -41,6 +43,7 @@ const invite = new InviteService({
   lottery: economy.lottery,
   activity: economy.activity,
 });
+const memberVerify = new MemberVerifyService(invite);
 const scheduler = new SchedulerService(economy.lottery, invite);
 
 const services: AppServices = {
@@ -56,6 +59,7 @@ const services: AppServices = {
   shop:       economy.shop,
   lottery:    economy.lottery,
   activity:   economy.activity,
+  memberVerify,
 };
 
 const client = new Client({
@@ -101,6 +105,7 @@ async function registerCommands(client: Client): Promise<void> {
     Shop.redeemData,
     Shop.lotteryData,
     Admin.adminData,
+    VerifyPanel.verifyPanelData,
   ].map((c) => c.toJSON());
 
   const rest = new REST().setToken(config.token);
@@ -163,6 +168,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         await Shop.handleShopButton(btn, services);
         return;
       }
+      if (id === 'gudhrides-verify:start') {
+        await VerifyPanel.handleVerifyButton(btn, services);
+        return;
+      }
       if (id.startsWith('invadm:')) {
         await Admin.handleAdminButton(btn, services);
         return;
@@ -189,6 +198,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       }
       if (modal.customId.startsWith('panel-edit:')) {
         await Panels.handlePanelModal(modal);
+        return;
+      }
+      if (modal.customId === 'gudhrides-verify:modal') {
+        await VerifyPanel.handleVerifyModal(modal, services);
         return;
       }
       if (modal.customId.startsWith('invadm:modal:')) {
@@ -222,6 +235,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       case 'invitepanel':  await Panels.handleInvite(interaction);                 break;
       case 'howto':        await Panels.handleHowto(interaction);                  break;
       case 'orderpanel':   await Panels.handleOrderPanel(interaction);            break;
+      case 'verifypanel':  await VerifyPanel.handleVerifyPanel(interaction);      break;
       case 'invite':       await Invite.handleInvite(interaction, services);       break;
       case 'invites':      await Invite.handleInviteLeaderboard(interaction, services); break;
       case 'referral':     await Referral.handleReferral(interaction, services);   break;
@@ -257,6 +271,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
 client.on(Events.GuildMemberAdd, async (member) => {
   try {
     await services.invite.handleMemberAdd(member);
+    await services.memberVerify.onMemberAdd(member);
   } catch (err) {
     console.error('[Bot] guildMemberAdd error:', err);
   }
@@ -345,6 +360,12 @@ client.once(Events.ClientReady, async (c) => {
     scheduler.start(c);
   } catch (err) {
     console.error('[Bot] Failed to start economy scheduler:', err);
+  }
+  try {
+    await VerifyPanel.ensureVerifyPanel(c);
+    console.log('[Bot] Verify panel ensured.');
+  } catch (err) {
+    console.error('[Bot] Failed to ensure verify panel:', err);
   }
 });
 

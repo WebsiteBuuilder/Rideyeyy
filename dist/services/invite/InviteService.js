@@ -129,7 +129,11 @@ class InviteService {
         this.sweeping = true;
         try {
             const due = await prisma_1.prisma.inviteJoin.findMany({
-                where: { status: client_1.InviteStatus.PENDING, verifyAt: { lte: new Date() } },
+                where: {
+                    status: client_1.InviteStatus.PENDING,
+                    verifyAt: { lte: new Date() },
+                    screenerVerifiedAt: null,
+                },
                 orderBy: { verifyAt: 'asc' },
                 take: 50,
             });
@@ -175,7 +179,12 @@ class InviteService {
                     await this.logging.log({ guildId: join.guildId, event: 'JOIN_FAKE', actorId: join.inviterUserId, targetUserId: join.invitedUserId, joinId: join.id, detail: `Verification failed: ${check.reason}` }, { client, channelId: cfg.loggingChannelId });
                     continue;
                 }
-                await this.reward.rewardJoin(client, guild, join, cfg);
+                // Passed anti-abuse checks but invite RC is paid on screener completion only.
+                // Defer re-check until they verify or leave.
+                await prisma_1.prisma.inviteJoin.update({
+                    where: { id: join.id },
+                    data: { verifyAt: new Date(Date.now() + cfg.verificationDelaySec * 1000) },
+                });
             }
         }
         catch (err) {

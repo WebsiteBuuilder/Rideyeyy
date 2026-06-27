@@ -459,6 +459,11 @@ export async function handleBookingActionButton(
       } catch (err) {
         console.error('[Book] lottery ticket grant failed:', err);
       }
+      try {
+        await services.invite.reward.rewardFirstOrder(interaction.client, interaction.guildId, updated.customerId);
+      } catch (err) {
+        console.error('[Book] first-order invite bonus failed:', err);
+      }
     }
     await updateTicketMessage(interaction.client, updated);
     await triggerReviewFlow(interaction.client, updated);

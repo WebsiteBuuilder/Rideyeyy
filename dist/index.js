@@ -45,6 +45,7 @@ const BookingService_1 = require("./services/BookingService");
 const ProviderStatsService_1 = require("./services/ProviderStatsService");
 const BlacklistService_1 = require("./services/BlacklistService");
 const InviteService_1 = require("./services/invite/InviteService");
+const MemberVerifyService_1 = require("./services/verify/MemberVerifyService");
 const EconomyServices_1 = require("./services/economy/EconomyServices");
 const SchedulerService_1 = require("./services/economy/SchedulerService");
 // Command handlers
@@ -60,6 +61,7 @@ const Invite = __importStar(require("./commands/invite"));
 const Admin = __importStar(require("./commands/inviteAdmin"));
 const Referral = __importStar(require("./commands/referral"));
 const Shop = __importStar(require("./commands/shop"));
+const VerifyPanel = __importStar(require("./commands/verifyPanel"));
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
 // ═══════════════════════════════════════════════════════════════════════════
@@ -71,6 +73,7 @@ const invite = new InviteService_1.InviteService({
     lottery: economy.lottery,
     activity: economy.activity,
 });
+const memberVerify = new MemberVerifyService_1.MemberVerifyService(invite);
 const scheduler = new SchedulerService_1.SchedulerService(economy.lottery, invite);
 const services = {
     economy: new EconomyService_1.EconomyService(),
@@ -85,6 +88,7 @@ const services = {
     shop: economy.shop,
     lottery: economy.lottery,
     activity: economy.activity,
+    memberVerify,
 };
 const client = new discord_js_1.Client({
     intents: [
@@ -127,6 +131,7 @@ async function registerCommands(client) {
         Shop.redeemData,
         Shop.lotteryData,
         Admin.adminData,
+        VerifyPanel.verifyPanelData,
     ].map((c) => c.toJSON());
     const rest = new discord_js_1.REST().setToken(config_1.config.token);
     if (config_1.config.guildId) {
@@ -185,6 +190,10 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
                 await Shop.handleShopButton(btn, services);
                 return;
             }
+            if (id === 'gudhrides-verify:start') {
+                await VerifyPanel.handleVerifyButton(btn, services);
+                return;
+            }
             if (id.startsWith('invadm:')) {
                 await Admin.handleAdminButton(btn, services);
                 return;
@@ -209,6 +218,10 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             }
             if (modal.customId.startsWith('panel-edit:')) {
                 await Panels.handlePanelModal(modal);
+                return;
+            }
+            if (modal.customId === 'gudhrides-verify:modal') {
+                await VerifyPanel.handleVerifyModal(modal, services);
                 return;
             }
             if (modal.customId.startsWith('invadm:modal:')) {
@@ -281,6 +294,9 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             case 'orderpanel':
                 await Panels.handleOrderPanel(interaction);
                 break;
+            case 'verifypanel':
+                await VerifyPanel.handleVerifyPanel(interaction);
+                break;
             case 'invite':
                 await Invite.handleInvite(interaction, services);
                 break;
@@ -332,6 +348,7 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
 client.on(discord_js_1.Events.GuildMemberAdd, async (member) => {
     try {
         await services.invite.handleMemberAdd(member);
+        await services.memberVerify.onMemberAdd(member);
     }
     catch (err) {
         console.error('[Bot] guildMemberAdd error:', err);
@@ -425,6 +442,13 @@ client.once(discord_js_1.Events.ClientReady, async (c) => {
     }
     catch (err) {
         console.error('[Bot] Failed to start economy scheduler:', err);
+    }
+    try {
+        await VerifyPanel.ensureVerifyPanel(c);
+        console.log('[Bot] Verify panel ensured.');
+    }
+    catch (err) {
+        console.error('[Bot] Failed to ensure verify panel:', err);
     }
 });
 client.login(config_1.config.token).catch((err) => {

@@ -374,6 +374,12 @@ async function handleBookingActionButton(interaction, services) {
             catch (err) {
                 console.error('[Book] lottery ticket grant failed:', err);
             }
+            try {
+                await services.invite.reward.rewardFirstOrder(interaction.client, interaction.guildId, updated.customerId);
+            }
+            catch (err) {
+                console.error('[Book] first-order invite bonus failed:', err);
+            }
         }
         await updateTicketMessage(interaction.client, updated);
         await (0, reviewFlow_1.triggerReviewFlow)(interaction.client, updated);

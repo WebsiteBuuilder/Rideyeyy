@@ -17,13 +17,15 @@ exports.config = {
     guildId: process.env['DISCORD_GUILD_ID'] ?? '',
     // Database
     databaseUrl: requireEnv('DATABASE_URL'),
-    // Roles
+    // Roles — Rider = customer; Provider = driver (never grant Provider on verify).
     roles: {
         admin: process.env['ADMIN_ROLE_ID'] ?? '0',
         staff: process.env['STAFF_ROLE_ID'] ?? '0',
         provider: process.env['PROVIDER_ROLE_ID'] ?? '0',
         vip: process.env['VIP_ROLE_ID'] ?? '',
         exclusive: process.env['EXCLUSIVE_ROLE_ID'] ?? '',
+        rider: process.env['RIDER_ROLE_ID'] ?? '0',
+        unverified: process.env['UNVERIFIED_ROLE_ID'] ?? '0',
     },
     // Channels
     channels: {
@@ -32,6 +34,15 @@ exports.config = {
         transcript: process.env['TRANSCRIPT_CHANNEL_ID'] ?? '1520338486467498174',
         orderHere: process.env['ORDER_CHANNEL_ID'] ?? '1509654528801243316',
         casino: process.env['CASINO_CHANNEL_ID'] ?? '1509652333070651444',
+        verify: process.env['VERIFY_CHANNEL_ID'] ?? '1509654341458595890',
+    },
+    // VaultCord-lite: backup server invite link for admin mass-DM pull.
+    backup: {
+        serverInviteUrl: process.env['BACKUP_SERVER_INVITE_URL'] ?? '',
+    },
+    // Invite economy bonuses (amounts beyond per-invite rewardAmount in InviteConfig).
+    inviteEconomy: {
+        firstOrderBonusRc: Number(process.env['INVITE_FIRST_ORDER_BONUS'] ?? 100),
     },
     // Daily reward
     daily: {
@@ -58,7 +69,7 @@ exports.config = {
     // editable via /admin economy.
     invite: {
         sweepIntervalMs: Number(process.env['INVITE_SWEEP_INTERVAL_MS'] ?? 30000),
-        defaultReward: Number(process.env['INVITE_REWARD'] ?? 250),
+        defaultReward: Number(process.env['INVITE_REWARD'] ?? 30),
         defaultVerifyDelaySec: Number(process.env['INVITE_VERIFY_DELAY_SEC'] ?? 600),
         defaultMinAccountAgeDays: Number(process.env['INVITE_MIN_ACCOUNT_AGE_DAYS'] ?? 7),
         // Default milestone ladder seeded (upserted by threshold) on first run.

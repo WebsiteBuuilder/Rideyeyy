@@ -163,7 +163,7 @@ enum InviteRewardType {
 model InviteConfig {
   id                   String   @id @default(cuid())
   guildId              String   @unique
-  rewardAmount         Int      @default(250)
+  rewardAmount         Int      @default(30)
   verificationDelaySec Int      @default(600)
   minAccountAgeDays    Int      @default(7)
   minMessages          Int      @default(0)
@@ -225,9 +225,11 @@ model InviteJoin {
   rewarded         Boolean           @default(false)
   rewardAmount     Int?
   rewardTxnRef     String?
-  verifyAttempts   Int               @default(0)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  verifyAttempts       Int               @default(0)
+  screenerVerifiedAt   DateTime?
+  firstOrderBonusPaid  Boolean           @default(false)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
 
   @@index([guildId, inviterUserId])
   @@index([guildId, invitedUserId])
@@ -415,6 +417,20 @@ model InviteActivity {
   messageCount  Int       @default(0)
   lastMessageAt DateTime?
   updatedAt     DateTime  @updatedAt
+
+  @@unique([guildId, userId])
+  @@index([guildId])
+}
+
+// ───────────────────────── Member Verify Screener ───────────────────────────
+
+model MemberVerification {
+  id            String   @id @default(cuid())
+  guildId       String
+  userId        String
+  inviterUserId String?
+  verifiedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
 
   @@unique([guildId, userId])
   @@index([guildId])

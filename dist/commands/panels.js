@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.orderPanelData = exports.howtoData = exports.inviteData = void 0;
 exports.handleInvite = handleInvite;
 exports.handleHowto = handleHowto;
+exports.publishPanel = publishPanel;
 exports.handlePanelModal = handlePanelModal;
 exports.handleOrderPanel = handleOrderPanel;
 const discord_js_1 = require("discord.js");

@@ -169,7 +169,11 @@ export class InviteService {
     this.sweeping = true;
     try {
       const due = await prisma.inviteJoin.findMany({
-        where: { status: InviteStatus.PENDING, verifyAt: { lte: new Date() } },
+        where: {
+          status: InviteStatus.PENDING,
+          verifyAt: { lte: new Date() },
+          screenerVerifiedAt: null,
+        },
         orderBy: { verifyAt: 'asc' },
         take: 50,
       });
@@ -223,7 +227,12 @@ export class InviteService {
           continue;
         }
 
-        await this.reward.rewardJoin(client, guild, join, cfg);
+        // Passed anti-abuse checks but invite RC is paid on screener completion only.
+        // Defer re-check until they verify or leave.
+        await prisma.inviteJoin.update({
+          where: { id: join.id },
+          data: { verifyAt: new Date(Date.now() + cfg.verificationDelaySec * 1000) },
+        });
       }
     } catch (err) {
       console.error('[Invite] Sweep error:', err);

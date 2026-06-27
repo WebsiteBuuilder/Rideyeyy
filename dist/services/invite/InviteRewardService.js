@@ -9,7 +9,9 @@ const client_1 = require("@prisma/client");
 const decimal_js_1 = __importDefault(require("decimal.js"));
 const prisma_1 = require("../../lib/prisma");
 const wallet_1 = require("../../lib/wallet");
+const config_1 = require("../../config");
 const discord_1 = require("../../utils/discord");
+const inviteAnnounce_1 = require("../../utils/inviteAnnounce");
 // ═══════════════════════════════════════════════════════════════════════════
 //  InviteRewardService — credits RouteCash to an inviter for a verified invite,
 //  atomically (economy + invite tables in one transaction) with cap enforcement
@@ -95,6 +97,59 @@ class InviteRewardService {
         });
         return { rewarded: true, amount };
     }
+    /** One-time bonus when an invited member completes their first booking. */
+    async rewardFirstOrder(client, guildId, customerId) {
+        try {
+            const completedCount = await prisma_1.prisma.booking.count({
+                where: { customerId, status: client_1.BookingStatus.COMPLETED },
+            });
+            if (completedCount !== 1)
+                return;
+            const join = await prisma_1.prisma.inviteJoin.findFirst({
+                where: {
+                    guildId,
+                    invitedUserId: customerId,
+                    inviterUserId: { not: null },
+                    firstOrderBonusPaid: false,
+                    status: { in: [client_1.InviteStatus.VERIFIED, client_1.InviteStatus.REWARDED] },
+                },
+                orderBy: { joinedAt: 'desc' },
+            });
+            if (!join?.inviterUserId)
+                return;
+            const cfg = await prisma_1.prisma.inviteConfig.findUnique({ where: { guildId } });
+            if (!cfg)
+                return;
+            const amount = config_1.config.inviteEconomy.firstOrderBonusRc;
+            const inviterId = join.inviterUserId;
+            await prisma_1.prisma.$transaction(async (tx) => {
+                await (0, wallet_1.adjustBalance)(tx, inviterId, new decimal_js_1.default(amount), 'invite_first_order', `First-order bonus for ${customerId}`);
+                await tx.inviteJoin.update({
+                    where: { id: join.id },
+                    data: { firstOrderBonusPaid: true },
+                });
+                await tx.inviteReward.create({
+                    data: {
+                        guildId,
+                        inviterUserId: inviterId,
+                        invitedUserId: customerId,
+                        joinId: join.id,
+                        amount: new client_1.Prisma.Decimal(amount),
+                        type: client_1.InviteRewardType.MANUAL,
+                        reason: `First completed booking by ${customerId}`,
+                    },
+                });
+            });
+            await this.logging.log({ guildId, event: 'REWARD_PAID', actorId: inviterId, targetUserId: customerId, joinId: join.id, detail: `+${amount} ${discord_1.BRAND.ticker} (first order)` }, { client, channelId: cfg.loggingChannelId });
+            const guild = client.guilds.cache.get(guildId) ?? (await client.guilds.fetch(guildId).catch(() => null));
+            if (guild) {
+                await this.notifyFirstOrder(client, guild, inviterId, customerId, amount, cfg);
+            }
+        }
+        catch (err) {
+            console.error('[Invite] First-order bonus failed:', err);
+        }
+    }
     async checkCaps(guildId, inviterId, config) {
         const now = Date.now();
         const base = { guildId, inviterUserId: inviterId, status: client_1.InviteStatus.REWARDED };
@@ -162,14 +217,47 @@ class InviteRewardService {
             /* DMs closed — ignore */
         }
         // Public announcement (best-effort).
-        if (config.autoAnnounce && config.announceChannelId && config.announceChannelId !== '0') {
+        const announceId = (0, inviteAnnounce_1.resolveAnnounceChannelId)(config);
+        if (config.autoAnnounce && announceId) {
             try {
-                const channel = await client.channels.fetch(config.announceChannelId).catch(() => null);
+                const channel = await client.channels.fetch(announceId).catch(() => null);
                 if (channel && channel.isTextBased() && !channel.isDMBased()) {
                     const pub = new discord_js_1.EmbedBuilder()
                         .setColor(discord_1.COLOR.WIN)
                         .setAuthor({ name: `${discord_1.BRAND.logo}  Invite Reward` })
                         .setDescription(`${discord_1.ICON.win} <@${inviterId}> earned **${amount}** ${discord_1.BRAND.ticker} for inviting a verified member!`)
+                        .setTimestamp();
+                    await channel.send({ embeds: [pub] });
+                }
+            }
+            catch {
+                /* ignore */
+            }
+        }
+    }
+    async notifyFirstOrder(client, guild, inviterId, customerId, amount, config) {
+        const embed = new discord_js_1.EmbedBuilder()
+            .setColor(discord_1.COLOR.WIN)
+            .setAuthor({ name: `${discord_1.BRAND.logo}  First Ride Bonus` })
+            .setTitle(`${discord_1.ICON.coin} +${amount} ${discord_1.BRAND.ticker}`)
+            .setDescription(`<@${customerId}> completed their first ride!\nYou earned **${amount}** ${discord_1.BRAND.ticker}.`)
+            .setTimestamp();
+        try {
+            const user = await client.users.fetch(inviterId);
+            await user.send({ embeds: [embed] });
+        }
+        catch {
+            /* DMs closed */
+        }
+        const announceId = (0, inviteAnnounce_1.resolveAnnounceChannelId)(config);
+        if (config.autoAnnounce && announceId) {
+            try {
+                const channel = await client.channels.fetch(announceId).catch(() => null);
+                if (channel && channel.isTextBased() && !channel.isDMBased()) {
+                    const pub = new discord_js_1.EmbedBuilder()
+                        .setColor(discord_1.COLOR.WIN)
+                        .setAuthor({ name: `${discord_1.BRAND.logo}  First Ride Bonus` })
+                        .setDescription(`${discord_1.ICON.win} <@${inviterId}> earned **${amount}** ${discord_1.BRAND.ticker} — their invite completed their first ride!`)
                         .setTimestamp();
                     await channel.send({ embeds: [pub] });
                 }

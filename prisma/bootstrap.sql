@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS "Panel" (
 CREATE TABLE IF NOT EXISTS "InviteConfig" (
     "id" TEXT NOT NULL,
     "guildId" TEXT NOT NULL,
-    "rewardAmount" INTEGER NOT NULL DEFAULT 250,
+    "rewardAmount" INTEGER NOT NULL DEFAULT 30,
     "verificationDelaySec" INTEGER NOT NULL DEFAULT 600,
     "minAccountAgeDays" INTEGER NOT NULL DEFAULT 7,
     "dailyCap" INTEGER NOT NULL DEFAULT 0,
@@ -334,8 +334,20 @@ ALTER TABLE "InviteConfig" ADD COLUMN IF NOT EXISTS "ticketsPerEvent" INTEGER NO
 ALTER TABLE "InviteConfig" ADD COLUMN IF NOT EXISTS "lotteryPrizeKey" TEXT NOT NULL DEFAULT 'RIDE_FREE_20';
 ALTER TABLE "InviteConfig" ADD COLUMN IF NOT EXISTS "lotteryChannelId" TEXT;
 ALTER TABLE "InviteJoin" ADD COLUMN IF NOT EXISTS "verifyAttempts" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "InviteJoin" ADD COLUMN IF NOT EXISTS "screenerVerifiedAt" TIMESTAMP(3);
+ALTER TABLE "InviteJoin" ADD COLUMN IF NOT EXISTS "firstOrderBonusPaid" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "InviteMilestone" ADD COLUMN IF NOT EXISTS "rewardRideKey" TEXT;
 ALTER TABLE "InviteMilestone" ADD COLUMN IF NOT EXISTS "rewardTickets" INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS "MemberVerification" (
+    "id" TEXT NOT NULL,
+    "guildId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "inviterUserId" TEXT,
+    "verifiedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "MemberVerification_pkey" PRIMARY KEY ("id")
+);
 
 -- Indexes
 CREATE UNIQUE INDEX IF NOT EXISTS "User_discordId_key" ON "User"("discordId");
@@ -389,6 +401,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "ScheduleState_guildId_key_key" ON "ScheduleSt
 CREATE INDEX IF NOT EXISTS "ScheduleState_guildId_idx" ON "ScheduleState"("guildId");
 CREATE UNIQUE INDEX IF NOT EXISTS "InviteActivity_guildId_userId_key" ON "InviteActivity"("guildId", "userId");
 CREATE INDEX IF NOT EXISTS "InviteActivity_guildId_idx" ON "InviteActivity"("guildId");
+CREATE UNIQUE INDEX IF NOT EXISTS "MemberVerification_guildId_userId_key" ON "MemberVerification"("guildId", "userId");
+CREATE INDEX IF NOT EXISTS "MemberVerification_guildId_idx" ON "MemberVerification"("guildId");
 
 -- Foreign keys (ADD CONSTRAINT has no IF NOT EXISTS, so guard against duplicate_object)
 DO $$ BEGIN

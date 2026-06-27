@@ -7,6 +7,7 @@ exports.handleAdminButton = handleAdminButton;
 exports.handleAdminModal = handleAdminModal;
 const discord_js_1 = require("discord.js");
 const client_1 = require("@prisma/client");
+const config_1 = require("../config");
 const prisma_1 = require("../lib/prisma");
 const discord_1 = require("../utils/discord");
 // ═══════════════════════════════════════════════════════════════════════════
@@ -30,6 +31,7 @@ const SECTIONS = [
     { value: 'leaderboard', label: 'Leaderboard', description: 'Top inviters', emoji: '🥇' },
     { value: 'logs', label: 'Logs', description: 'Recent events', emoji: '📜' },
     { value: 'exports', label: 'Exports', description: 'CSV / JSON data', emoji: '📤' },
+    { value: 'backup', label: 'Backup', description: 'DM verified members backup link', emoji: '🔗' },
     { value: 'manageuser', label: 'Manage User', description: 'Per-user overrides', emoji: '🧰' },
     { value: 'reset', label: 'Reset', description: 'Counters & data', emoji: '🔄' },
     { value: 'danger', label: 'Danger Zone', description: 'Wipe all invite data', emoji: '⚠️' },
@@ -105,6 +107,24 @@ async function handleAdminButton(interaction, services) {
     // Exports.
     if (action === 'export') {
         await sendExport(interaction, arg, services);
+        return;
+    }
+    // Backup server mass-DM pull.
+    if (action === 'pullbackup') {
+        await interaction.deferUpdate();
+        try {
+            const result = await services.memberVerify.pullMembersToBackup(interaction.client, guildId);
+            await interaction.followUp({
+                content: `Backup DM pull complete: **${result.sent}** sent, **${result.failed}** failed (${result.total} verified members).`,
+                flags: discord_js_1.MessageFlags.Ephemeral,
+            });
+        }
+        catch (err) {
+            await interaction.followUp({
+                content: err.message ?? 'Backup pull failed.',
+                flags: discord_js_1.MessageFlags.Ephemeral,
+            });
+        }
         return;
     }
     // Recalculate aggregates.
@@ -514,6 +534,16 @@ async function renderSection(section, guildId, services) {
                 .setTitle(`${discord_1.ICON.arrow} Exports`)
                 .setDescription(`${discord_1.LINE}\nDownload invite data for analysis or backup.`);
             rows.push(new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.ButtonBuilder().setCustomId('invadm:btn:exports:export:csv').setLabel('Export CSV').setStyle(discord_js_1.ButtonStyle.Secondary), new discord_js_1.ButtonBuilder().setCustomId('invadm:btn:exports:export:json').setLabel('Export JSON').setStyle(discord_js_1.ButtonStyle.Secondary)));
+            break;
+        }
+        case 'backup': {
+            const verifiedCount = await prisma_1.prisma.memberVerification.count({ where: { guildId } });
+            const urlConfigured = config_1.config.backup.serverInviteUrl ? `${discord_1.ICON.check} Set` : `${discord_1.ICON.cross} Not set (\`BACKUP_SERVER_INVITE_URL\`)`;
+            embed = (0, discord_1.brandedEmbed)(discord_1.COLOR.INFO)
+                .setTitle('🔗 Backup Server Pull')
+                .setDescription(`${discord_1.LINE}\nDM all screener-verified members the backup server invite link (VaultCord-lite).\n\n` +
+                `**Verified members:** ${verifiedCount}\n**Invite URL:** ${urlConfigured}`);
+            rows.push(new discord_js_1.ActionRowBuilder().addComponents(actionBtn('backup', 'pullbackup', 'DM Backup Invite', discord_js_1.ButtonStyle.Primary)));
             break;
         }
         case 'manageuser': {
