@@ -135,9 +135,10 @@ export async function handleBookButton(
   interaction: ButtonInteraction,
   services: AppServices
 ): Promise<void> {
+  // customId format: "gudhrides-book:<step>:<value>" (e.g. gudhrides-book:service:RIDE)
   const parts = interaction.customId.split(':');
-  const step = parts[2];
-  const value = parts[3];
+  const step = parts[1];
+  const value = parts[2];
 
   if (step === 'service') {
     const serviceType = value as ServiceType;
@@ -393,9 +394,10 @@ export async function handleReviewButton(
   interaction: ButtonInteraction,
   services: AppServices
 ): Promise<void> {
+  // customId format: "gudhrides-review:rating:<bookingNumber>:<star>"
   const parts = interaction.customId.split(':');
-  const bookingNumber = parts[3];
-  const rating = Number(parts[4]);
+  const bookingNumber = parts[2];
+  const rating = Number(parts[3]);
   if (!bookingNumber || rating < 1 || rating > 5) return;
 
   // Acknowledge the component immediately; rating persistence + stats updates
