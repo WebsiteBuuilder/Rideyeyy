@@ -163,7 +163,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       case 'provider-stats': await ProviderStats.handleProviderStats(interaction, services); break;
       case 'provider-leaderboard': await ProviderLeaderboard.handleProviderLeaderboard(interaction, services); break;
       case 'blacklist':    await Blacklist.handleBlacklist(interaction, services); break;
-      case 'invite':       await Panels.handleInvite(interaction);                 break;
+      case 'invitepanel':  await Panels.handleInvite(interaction);                 break;
       case 'howto':        await Panels.handleHowto(interaction);                  break;
       case 'orderpanel':   await Panels.handleOrderPanel(interaction);            break;
       default:

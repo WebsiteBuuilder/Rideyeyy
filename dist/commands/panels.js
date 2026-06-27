@@ -26,7 +26,7 @@ const PANEL_META = {
             '',
             '_Fake, self, or rejoining invites do not count._',
             '',
-            'Staff can edit this panel with `/invite`.',
+            'Staff can edit this panel with `/invitepanel`.',
         ].join('\n'),
     },
     howto: {
@@ -51,7 +51,7 @@ const PANEL_META = {
     },
 };
 exports.inviteData = new discord_js_1.SlashCommandBuilder()
-    .setName('invite')
+    .setName('invitepanel')
     .setDescription('Post or edit the invites info panel (staff only)');
 exports.howtoData = new discord_js_1.SlashCommandBuilder()
     .setName('howto')

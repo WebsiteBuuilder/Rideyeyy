@@ -48,7 +48,7 @@ const PANEL_META: Record<PanelKey, { title: string; icon: string; color: number;
       '',
       '_Fake, self, or rejoining invites do not count._',
       '',
-      'Staff can edit this panel with `/invite`.',
+      'Staff can edit this panel with `/invitepanel`.',
     ].join('\n'),
   },
   howto: {
@@ -74,7 +74,7 @@ const PANEL_META: Record<PanelKey, { title: string; icon: string; color: number;
 };
 
 export const inviteData = new SlashCommandBuilder()
-  .setName('invite')
+  .setName('invitepanel')
   .setDescription('Post or edit the invites info panel (staff only)');
 
 export const howtoData = new SlashCommandBuilder()

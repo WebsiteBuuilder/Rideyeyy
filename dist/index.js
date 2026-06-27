@@ -218,7 +218,7 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             case 'blacklist':
                 await Blacklist.handleBlacklist(interaction, services);
                 break;
-            case 'invite':
+            case 'invitepanel':
                 await Panels.handleInvite(interaction);
                 break;
             case 'howto':

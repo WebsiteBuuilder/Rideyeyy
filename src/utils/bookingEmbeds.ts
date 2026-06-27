@@ -253,7 +253,7 @@ export function buildVouchEmbed(
     .addFields(
       { name: 'Booking', value: `\`${booking.bookingNumber}\``, inline: true },
       { name: 'Service', value: SERVICE_LABELS[booking.serviceType], inline: true },
-      { name: SPACER, value: SPACER, inline: true },
+      { name: 'Rating', value: `${booking.rating ?? 0}/5`, inline: true },
       { name: 'Customer', value: customerTag, inline: true },
       { name: 'Provider', value: providerTag, inline: true },
     )

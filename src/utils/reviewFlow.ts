@@ -47,41 +47,71 @@ export async function handleReviewRating(
 
 async function createVouch(client: Client, booking: Booking): Promise<void> {
   if (!booking.providerId) return;
-  const existing = await prisma.vouch.findUnique({ where: { bookingId: booking.id } });
-  if (existing) return;
 
-  await prisma.user.upsert({
-    where: { discordId: booking.customerId },
-    create: { discordId: booking.customerId },
-    update: {},
-  });
-  await prisma.user.upsert({
-    where: { discordId: booking.providerId },
-    create: { discordId: booking.providerId },
-    update: {},
-  });
-  await prisma.vouch.create({
-    data: {
-      bookingId: booking.id,
-      customerId: booking.customerId,
-      providerId: booking.providerId,
-      rating: booking.rating ?? 0,
-    },
-  });
+  // Persist the vouch record — best-effort; a DB hiccup here must never stop us
+  // from posting the public vouch.
+  try {
+    const existing = await prisma.vouch.findUnique({ where: { bookingId: booking.id } });
+    if (!existing) {
+      await prisma.user.upsert({
+        where: { discordId: booking.customerId },
+        create: { discordId: booking.customerId },
+        update: {},
+      });
+      await prisma.user.upsert({
+        where: { discordId: booking.providerId },
+        create: { discordId: booking.providerId },
+        update: {},
+      });
+      await prisma.vouch.create({
+        data: {
+          bookingId: booking.id,
+          customerId: booking.customerId,
+          providerId: booking.providerId,
+          rating: booking.rating ?? 0,
+        },
+      });
+    }
+  } catch (err) {
+    console.error('[Bot] Failed to persist vouch record (continuing to post):', err);
+  }
 
   if (config.channels.vouch === '0') {
-    console.warn('[Bot] VOUCH_CHANNEL_ID not configured; vouch saved but not posted.');
-    console.log(`[Bot] Vouch Created: ${booking.bookingNumber}`);
+    console.warn(
+      '[Bot] VOUCH_CHANNEL_ID is not set — vouch recorded but cannot be posted. ' +
+        'Set VOUCH_CHANNEL_ID to your vouch channel ID.'
+    );
+    return;
+  }
+
+  const channel = await client.channels.fetch(config.channels.vouch).catch(() => null);
+  if (!channel) {
+    console.error(
+      `[Bot] Vouch channel ${config.channels.vouch} could not be fetched (wrong ID or missing access).`
+    );
+    return;
+  }
+  if (!channel.isTextBased() || channel.isDMBased()) {
+    console.error(
+      `[Bot] Vouch channel ${config.channels.vouch} is not a text channel the bot can post in.`
+    );
     return;
   }
 
   try {
-    const channel = await client.channels.fetch(config.channels.vouch);
-    if (!channel?.isTextBased()) return;
     const embed = buildVouchEmbed(booking, `<@${booking.customerId}>`, `<@${booking.providerId}>`);
     await (channel as TextChannel).send({ embeds: [embed] });
-    console.log(`[Bot] Vouch Created: ${booking.bookingNumber}`);
+    console.log(`[Bot] Vouch posted to ${config.channels.vouch}: ${booking.bookingNumber}`);
   } catch (err) {
-    console.error('[Bot] Failed to post vouch embed:', err);
+    console.error('[Bot] Failed to post vouch embed, trying plain-text fallback:', err);
+    try {
+      await (channel as TextChannel).send(
+        `⭐ **Vouch** — <@${booking.providerId}> rated **${booking.rating ?? 0}/5** by <@${booking.customerId}> ` +
+          `(booking \`${booking.bookingNumber}\`).`
+      );
+      console.log(`[Bot] Vouch posted (plain text): ${booking.bookingNumber}`);
+    } catch (err2) {
+      console.error('[Bot] Fallback vouch post also failed:', err2);
+    }
   }
 }

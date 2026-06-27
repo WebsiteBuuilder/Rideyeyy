@@ -187,7 +187,7 @@ function buildVouchEmbed(booking, customerTag, providerTag) {
         `\n${discord_1.LINE}\n` +
         `**${'★'.repeat(booking.rating ?? 0)}${'☆'.repeat(5 - (booking.rating ?? 0))}**  (${booking.rating ?? 0}/5)\n` +
         (booking.notes ? `\n> ${booking.notes}\n` : ''))
-        .addFields({ name: 'Booking', value: `\`${booking.bookingNumber}\``, inline: true }, { name: 'Service', value: SERVICE_LABELS[booking.serviceType], inline: true }, { name: discord_1.SPACER, value: discord_1.SPACER, inline: true }, { name: 'Customer', value: customerTag, inline: true }, { name: 'Provider', value: providerTag, inline: true })
+        .addFields({ name: 'Booking', value: `\`${booking.bookingNumber}\``, inline: true }, { name: 'Service', value: SERVICE_LABELS[booking.serviceType], inline: true }, { name: 'Rating', value: `${booking.rating ?? 0}/5`, inline: true }, { name: 'Customer', value: customerTag, inline: true }, { name: 'Provider', value: providerTag, inline: true })
         .setFooter({ text: `${discord_1.BRAND.name}  ·  ${discord_1.BRAND.tagline}` });
 }
 function buildProviderStatsEmbed(stats, userId) {
