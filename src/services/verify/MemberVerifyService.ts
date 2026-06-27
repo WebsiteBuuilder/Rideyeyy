@@ -28,8 +28,16 @@ export class MemberVerifyService {
 
   /** Assign Unverified role on join (best-effort). */
   async onMemberAdd(member: GuildMember): Promise<void> {
+    if (member.user.bot) return;
+
     const roleId = config.roles.unverified;
     if (roleId === '0') return;
+
+    const alreadyVerified = await prisma.memberVerification.findUnique({
+      where: { guildId_userId: { guildId: member.guild.id, userId: member.id } },
+    });
+    if (alreadyVerified) return;
+
     try {
       if (!member.roles.cache.has(roleId)) {
         await member.roles.add(roleId);

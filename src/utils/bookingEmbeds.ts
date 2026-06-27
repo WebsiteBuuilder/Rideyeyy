@@ -137,6 +137,12 @@ export function buildBookingActionRow(
       .setStyle(ButtonStyle.Primary)
       .setDisabled(completeDisabled),
     new ButtonBuilder()
+      .setCustomId(`gudhrides-booking:incomplete:${bookingNumber}`)
+      .setLabel('Incomplete')
+      .setEmoji('➖')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(completeDisabled),
+    new ButtonBuilder()
       .setCustomId(`gudhrides-booking:cancel:${bookingNumber}`)
       .setLabel('Cancel')
       .setEmoji('🛑')
@@ -247,8 +253,7 @@ export function buildVouchEmbed(
     .setDescription(
       statusBanner(`${ICON.win}  VERIFIED REVIEW  ${ICON.win}`, 'win') +
       `\n${LINE}\n` +
-      `**${'★'.repeat(booking.rating ?? 0)}${'☆'.repeat(5 - (booking.rating ?? 0))}**  (${booking.rating ?? 0}/5)\n` +
-      (booking.notes ? `\n> ${booking.notes}\n` : '')
+      `**${'★'.repeat(booking.rating ?? 0)}${'☆'.repeat(5 - (booking.rating ?? 0))}**  (${booking.rating ?? 0}/5)\n`
     )
     .addFields(
       { name: 'Booking', value: `\`${booking.bookingNumber}\``, inline: true },

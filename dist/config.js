@@ -25,7 +25,7 @@ exports.config = {
         vip: process.env['VIP_ROLE_ID'] ?? '',
         exclusive: process.env['EXCLUSIVE_ROLE_ID'] ?? '',
         rider: process.env['RIDER_ROLE_ID'] ?? '0',
-        unverified: process.env['UNVERIFIED_ROLE_ID'] ?? '0',
+        unverified: process.env['UNVERIFIED_ROLE_ID'] ?? '1520555170889469972',
     },
     // Channels
     channels: {

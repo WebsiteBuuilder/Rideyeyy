@@ -352,7 +352,7 @@ async function handleBookingActionButton(interaction, services) {
         await (0, discord_1.ephemeralReply)(interaction, `You claimed booking **${bookingNumber}**.`);
         return;
     }
-    if (action === 'complete') {
+    if (action === 'complete' || action === 'incomplete') {
         if (interaction.user.id !== booking.providerId) {
             await (0, discord_1.ephemeralReply)(interaction, 'Only the assigned provider can complete this booking.');
             return;
@@ -363,7 +363,6 @@ async function handleBookingActionButton(interaction, services) {
             return;
         }
         await services.providerStats.incrementCompleted(interaction.user.id, new decimal_js_1.default(updated.price.toString()));
-        // Award the customer weekly-lottery tickets for completing a ride.
         if (interaction.guildId) {
             try {
                 const cfg = await services.invite.admin.getConfig(interaction.guildId);
@@ -382,8 +381,11 @@ async function handleBookingActionButton(interaction, services) {
             }
         }
         await updateTicketMessage(interaction.client, updated);
-        await (0, reviewFlow_1.triggerReviewFlow)(interaction.client, updated);
-        await (0, discord_1.ephemeralReply)(interaction, `Booking **${bookingNumber}** marked as completed.`);
+        if (action === 'complete') {
+            await (0, reviewFlow_1.triggerReviewFlow)(interaction.client, updated);
+        }
+        const label = action === 'incomplete' ? 'marked as completed (no vouch)' : 'marked as completed';
+        await (0, discord_1.ephemeralReply)(interaction, `Booking **${bookingNumber}** ${label}.`);
         await saveTranscriptAndScheduleDelete(interaction.client, updated);
         return;
     }

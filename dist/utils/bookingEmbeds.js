@@ -107,6 +107,11 @@ function buildBookingActionRow(bookingNumber, status) {
         .setEmoji('✅')
         .setStyle(discord_js_1.ButtonStyle.Primary)
         .setDisabled(completeDisabled), new discord_js_1.ButtonBuilder()
+        .setCustomId(`gudhrides-booking:incomplete:${bookingNumber}`)
+        .setLabel('Incomplete')
+        .setEmoji('➖')
+        .setStyle(discord_js_1.ButtonStyle.Secondary)
+        .setDisabled(completeDisabled), new discord_js_1.ButtonBuilder()
         .setCustomId(`gudhrides-booking:cancel:${bookingNumber}`)
         .setLabel('Cancel')
         .setEmoji('🛑')
@@ -185,8 +190,7 @@ function buildVouchEmbed(booking, customerTag, providerTag) {
         .setTitle('⭐ Customer Vouch')
         .setDescription((0, discord_1.statusBanner)(`${discord_1.ICON.win}  VERIFIED REVIEW  ${discord_1.ICON.win}`, 'win') +
         `\n${discord_1.LINE}\n` +
-        `**${'★'.repeat(booking.rating ?? 0)}${'☆'.repeat(5 - (booking.rating ?? 0))}**  (${booking.rating ?? 0}/5)\n` +
-        (booking.notes ? `\n> ${booking.notes}\n` : ''))
+        `**${'★'.repeat(booking.rating ?? 0)}${'☆'.repeat(5 - (booking.rating ?? 0))}**  (${booking.rating ?? 0}/5)\n`)
         .addFields({ name: 'Booking', value: `\`${booking.bookingNumber}\``, inline: true }, { name: 'Service', value: SERVICE_LABELS[booking.serviceType], inline: true }, { name: 'Rating', value: `${booking.rating ?? 0}/5`, inline: true }, { name: 'Customer', value: customerTag, inline: true }, { name: 'Provider', value: providerTag, inline: true })
         .setFooter({ text: `${discord_1.BRAND.name}  ·  ${discord_1.BRAND.tagline}` });
 }
