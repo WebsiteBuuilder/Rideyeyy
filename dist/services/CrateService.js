@@ -8,14 +8,77 @@ const decimal_js_1 = __importDefault(require("decimal.js"));
 const prisma_1 = require("../lib/prisma");
 const wallet_1 = require("../lib/wallet");
 const config_1 = require("../config");
-const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
-const CURRENCY_TYPES = ['rc', 'route_cash', 'routecash', 'cash', 'coins', 'coin', 'currency', 'money', 'balance'];
-function asString(v) {
+function metaStr(meta, key) {
+    const v = meta?.[key];
     return typeof v === 'string' && v.length > 0 ? v : undefined;
 }
-function coerceRarity(meta, fallback) {
-    const r = meta && typeof meta['rarity'] === 'string' ? meta['rarity'].toLowerCase() : '';
-    return RARITIES.includes(r) ? r : fallback;
+function rcRarity(value) {
+    if (value.lte(100))
+        return 'common';
+    if (value.lte(300))
+        return 'uncommon';
+    if (value.lte(1000))
+        return 'rare';
+    if (value.lte(3000))
+        return 'epic';
+    return 'legendary';
+}
+function resolveReward(row) {
+    const type = row.reward_type.toLowerCase();
+    const meta = row.reward_metadata;
+    const value = row.reward_value != null ? new decimal_js_1.default(row.reward_value) : null;
+    if (type === 'nothing') {
+        return { kind: 'nothing', description: 'Nothing this time — better luck next crate', rarity: 'common' };
+    }
+    if (type === 'rc_payout' || type.includes('rc') || type.includes('payout') || type.includes('cash')) {
+        const amount = value ?? new decimal_js_1.default(0);
+        return {
+            kind: 'currency',
+            currency: amount,
+            description: `${amount.toFixed(0)} Route Cash`,
+            rarity: rcRarity(amount),
+        };
+    }
+    if (type.includes('role')) {
+        const roleId = metaStr(meta, 'roleId') ?? metaStr(meta, 'role_id');
+        return {
+            kind: 'role',
+            roleId,
+            itemType: row.reward_type,
+            itemQuantity: 1,
+            description: metaStr(meta, 'roleName') ?? metaStr(meta, 'role_name') ?? 'Cosmetic role',
+            rarity: 'legendary',
+        };
+    }
+    if (type.includes('discount')) {
+        const amt = metaStr(meta, 'discountAmount');
+        return {
+            kind: 'item',
+            itemType: row.reward_type,
+            itemQuantity: 1,
+            description: amt ? `$${amt} discount token` : 'Discount token',
+            rarity: 'uncommon',
+        };
+    }
+    if (type.includes('raffle') || type.includes('ticket')) {
+        const qty = value ? Math.max(1, Math.round(value.toNumber())) : 1;
+        return {
+            kind: 'item',
+            itemType: row.reward_type,
+            itemQuantity: qty,
+            description: `${qty}× jackpot raffle ticket`,
+            rarity: 'epic',
+        };
+    }
+    // Generic fallback: treat as an inventory item.
+    const qty = value ? Math.max(1, Math.round(value.toNumber())) : 1;
+    return {
+        kind: 'item',
+        itemType: row.reward_type,
+        itemQuantity: qty,
+        description: metaStr(meta, 'description') ?? metaStr(meta, 'label') ?? row.reward_type.replace(/_/g, ' '),
+        rarity: 'uncommon',
+    };
 }
 function weightedPick(rows) {
     const total = rows.reduce((sum, r) => sum + Math.max(0, r.weight || 0), 0);
@@ -29,27 +92,8 @@ function weightedPick(rows) {
     }
     return rows[rows.length - 1];
 }
-function isCurrency(rewardType) {
-    const t = rewardType.toLowerCase();
-    return CURRENCY_TYPES.some((c) => t.includes(c));
-}
-function isRole(rewardType) {
-    return rewardType.toLowerCase().includes('role');
-}
-function describeReward(row) {
-    const meta = row.reward_metadata ?? {};
-    const explicit = asString(meta['description']) ?? asString(meta['label']) ?? asString(meta['name']);
-    if (explicit)
-        return explicit;
-    if (isCurrency(row.reward_type) && row.reward_value) {
-        return `${new decimal_js_1.default(row.reward_value).toFixed(0)} Route Cash`;
-    }
-    if (isRole(row.reward_type)) {
-        return asString(meta['role_name']) ? `${meta['role_name']} role` : 'Exclusive role';
-    }
-    if (row.reward_value)
-        return `${row.reward_type} (${row.reward_value})`;
-    return row.reward_type;
+function isValidSnowflake(id) {
+    return typeof id === 'string' && /^\d{16,20}$/.test(id) && id !== '0';
 }
 class CrateService {
     async openCrate(userId, type, client, guildId) {
@@ -64,28 +108,30 @@ class CrateService {
         if (rows.length === 0)
             throw new Error('This crate has no rewards configured.');
         const picked = weightedPick(rows);
-        const rarity = coerceRarity(picked.reward_metadata, isRole(picked.reward_type) ? 'rare' : 'common');
-        const description = describeReward(picked);
-        const isJackpot = rarity === 'epic' || rarity === 'legendary';
+        const reward = resolveReward(picked);
+        const isJackpot = reward.rarity === 'epic' || reward.rarity === 'legendary';
         const rewardLog = {
             reward_id: picked.id,
             reward_type: picked.reward_type,
             reward_value: picked.reward_value,
-            description,
-            rarity,
+            description: reward.description,
+            rarity: reward.rarity,
         };
         // Money + logging happen atomically; the role grant (Discord API) is best-effort.
         await prisma_1.prisma.$transaction(async (tx) => {
             await (0, wallet_1.adjustBalance)(tx, userId, new decimal_js_1.default(cost).neg(), 'crate_open', `${type} crate`);
-            if (isCurrency(picked.reward_type) && picked.reward_value) {
-                await (0, wallet_1.adjustBalance)(tx, userId, new decimal_js_1.default(picked.reward_value), 'crate_reward', `${type} crate reward`);
+            if (reward.kind === 'currency' && reward.currency && reward.currency.gt(0)) {
+                await (0, wallet_1.adjustBalance)(tx, userId, reward.currency, 'crate_reward', `${type} crate: ${reward.description}`);
             }
-            else if (!isRole(picked.reward_type)) {
-                // Treat anything non-currency / non-role as an inventory item.
-                const itemMeta = JSON.stringify({ ...(picked.reward_metadata ?? {}), description, source: `${type}_crate` });
+            else if (reward.kind === 'item' || reward.kind === 'role') {
+                const itemMeta = JSON.stringify({
+                    ...(picked.reward_metadata ?? {}),
+                    description: reward.description,
+                    source: `${type}_crate`,
+                });
                 await tx.$executeRaw `
           INSERT INTO user_inventory (user_id, item_type, item_metadata, quantity)
-          VALUES (${userId}::bigint, ${picked.reward_type}, ${itemMeta}::jsonb, 1)
+          VALUES (${userId}::bigint, ${reward.itemType ?? picked.reward_type}, ${itemMeta}::jsonb, ${reward.itemQuantity ?? 1})
         `;
             }
             await tx.$executeRaw `
@@ -93,21 +139,18 @@ class CrateService {
         VALUES (${userId}::bigint, ${type}, ${new decimal_js_1.default(cost).toFixed()}::numeric, ${JSON.stringify([rewardLog])}::jsonb, ${isJackpot})
       `;
         });
-        // Best-effort Discord role grant for role rewards.
-        if (isRole(picked.reward_type)) {
-            const roleId = asString((picked.reward_metadata ?? {})['role_id']);
-            if (roleId) {
-                try {
-                    const guild = await client.guilds.fetch(guildId);
-                    const member = await guild.members.fetch(userId);
-                    await member.roles.add(roleId);
-                }
-                catch {
-                    /* role grant is best-effort — reward still recorded */
-                }
+        // Best-effort Discord role grant for role rewards with a real role id.
+        if (reward.kind === 'role' && isValidSnowflake(reward.roleId)) {
+            try {
+                const guild = await client.guilds.fetch(guildId);
+                const member = await guild.members.fetch(userId);
+                await member.roles.add(reward.roleId);
+            }
+            catch {
+                /* role grant is best-effort — reward still recorded */
             }
         }
-        return [{ description, rarity }];
+        return [{ description: reward.description, rarity: reward.rarity }];
     }
     async getAllRewardsSummary() {
         const rows = await prisma_1.prisma.$queryRaw `
@@ -135,7 +178,7 @@ class CrateService {
             const total = list.reduce((s, r) => s + Math.max(0, r.weight || 0), 0) || 1;
             const lines = list.map((r) => {
                 const chance = ((Math.max(0, r.weight || 0) / total) * 100).toFixed(1);
-                return `> ${describeReward(r)} — \`${chance}%\``;
+                return `> ${resolveReward(r).description} — \`${chance}%\``;
             });
             sections.push(`### ${crate.toUpperCase()}\n${lines.join('\n')}`);
         }

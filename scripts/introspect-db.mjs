@@ -1,35 +1,27 @@
-// One-time, read-only data dump for crate reward wiring. Runs inside Railway.
-// Emits ONE single-line console.log per row so the log pipeline cannot split or
-// reorder multi-line messages. Read-only.
+// One-time, read-only column dump for the tables the services INSERT into.
+// Emits ONE single-line console.log per column so the log pipeline cannot split
+// or reorder multi-line messages. Read-only.
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient({ log: [] });
 
 try {
-  console.log('========== CRATE_REWARDS DATA DUMP START ==========');
-
-  const distinct = await prisma.$queryRawUnsafe(
-    `SELECT DISTINCT reward_type FROM crate_rewards ORDER BY reward_type`
-  );
-  console.log('REWARD_TYPES :: ' + distinct.map((r) => r.reward_type).join(' | '));
-
-  const rows = await prisma.$queryRawUnsafe(`
-    SELECT crate_type, reward_type, reward_value::text AS reward_value,
-           weight, reward_metadata
-    FROM crate_rewards
-    ORDER BY crate_type, weight DESC
+  console.log('========== WRITE-TARGET COLUMNS DUMP START ==========');
+  const cols = await prisma.$queryRawUnsafe(`
+    SELECT table_name, column_name, data_type, is_nullable, column_default, ordinal_position
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name IN ('transactions', 'crate_opens', 'user_inventory', 'daily_claims')
+    ORDER BY table_name, ordinal_position
   `);
-
-  for (const r of rows) {
-    const meta = r.reward_metadata ? JSON.stringify(r.reward_metadata) : 'null';
-    console.log(
-      `ROW :: crate=${r.crate_type} type=${r.reward_type} value=${r.reward_value} weight=${r.weight} meta=${meta}`
-    );
+  for (const c of cols) {
+    const nn = c.is_nullable === 'NO' ? 'NOT NULL' : 'NULL';
+    const def = c.column_default ? ` DEFAULT ${c.column_default}` : '';
+    console.log(`COL :: ${c.table_name}.${c.column_name} [${c.ordinal_position}] ${c.data_type} ${nn}${def}`);
   }
-
-  console.log('========== CRATE_REWARDS DATA DUMP END ==========');
+  console.log('========== WRITE-TARGET COLUMNS DUMP END ==========');
 } catch (err) {
-  console.error('=== CRATE DATA DUMP ERROR ===\n' + (err?.stack || err));
+  console.error('=== COLUMNS DUMP ERROR ===\n' + (err?.stack || err));
 } finally {
   await prisma.$disconnect();
 }
