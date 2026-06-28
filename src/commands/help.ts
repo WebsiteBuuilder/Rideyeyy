@@ -121,10 +121,8 @@ function buildHelpEmbed(topic: HelpTopic): EmbedBuilder {
             `2. They join and **pass verification** in ${verify} → you earn invite ${BRAND.ticker}\n` +
             `3. They complete their **first ride** → you get a **${firstOrderBonus} ${BRAND.ticker}** bonus (once per invite)\n\n` +
             `**Commands**\n` +
-            `• \`/referral\` — your dashboard (invites, milestones, lottery tickets)\n` +
-            `• \`/invite card\` — invite card overview\n` +
-            `• \`/invite stats\` · \`/invite history\` · \`/invite rewards\` · \`/invite milestones\`\n` +
-            `• \`/invites\` — top inviters leaderboard\n\n` +
+            `• \`/invites\` — your stats, milestones, recent joins, and reward codes\n` +
+            `• \`/invite-leaderboard\` — top inviters (all-time, weekly, monthly)\n\n` +
             `_Fake, self, or early-leave invites don't count._`
         );
 

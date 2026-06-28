@@ -27,7 +27,6 @@ import * as Blacklist from './commands/blacklist';
 import * as Panels from './commands/panels';
 import * as Invite from './commands/invite';
 import * as Admin from './commands/inviteAdmin';
-import * as Referral from './commands/referral';
 import * as Shop from './commands/shop';
 import * as VerifyPanel from './commands/verifyPanel';
 import * as Help from './commands/help';
@@ -99,9 +98,8 @@ async function registerCommands(client: Client): Promise<void> {
     Panels.inviteData,
     Panels.howtoData,
     Panels.orderPanelData,
-    Invite.inviteUserData,
-    Invite.invitesLeaderboardData,
-    Referral.referralData,
+    Invite.invitesData,
+    Invite.inviteLeaderboardData,
     Shop.shopData,
     Shop.redeemData,
     Shop.lotteryData,
@@ -242,9 +240,8 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       case 'howto':        await Panels.handleHowto(interaction);                  break;
       case 'orderpanel':   await Panels.handleOrderPanel(interaction);            break;
       case 'verifypanel':  await VerifyPanel.handleVerifyPanel(interaction);      break;
-      case 'invite':       await Invite.handleInvite(interaction, services);       break;
-      case 'invites':      await Invite.handleInviteLeaderboard(interaction, services); break;
-      case 'referral':     await Referral.handleReferral(interaction, services);   break;
+      case 'invites':            await Invite.handleInvites(interaction, services);           break;
+      case 'invite-leaderboard': await Invite.handleInviteLeaderboard(interaction, services); break;
       case 'shop':         await Shop.handleShop(interaction, services);           break;
       case 'redeem':       await Shop.handleRedeem(interaction, services);         break;
       case 'lottery':      await Shop.handleLottery(interaction, services);        break;

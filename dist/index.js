@@ -59,7 +59,6 @@ const Blacklist = __importStar(require("./commands/blacklist"));
 const Panels = __importStar(require("./commands/panels"));
 const Invite = __importStar(require("./commands/invite"));
 const Admin = __importStar(require("./commands/inviteAdmin"));
-const Referral = __importStar(require("./commands/referral"));
 const Shop = __importStar(require("./commands/shop"));
 const VerifyPanel = __importStar(require("./commands/verifyPanel"));
 const Help = __importStar(require("./commands/help"));
@@ -125,9 +124,8 @@ async function registerCommands(client) {
         Panels.inviteData,
         Panels.howtoData,
         Panels.orderPanelData,
-        Invite.inviteUserData,
-        Invite.invitesLeaderboardData,
-        Referral.referralData,
+        Invite.invitesData,
+        Invite.inviteLeaderboardData,
         Shop.shopData,
         Shop.redeemData,
         Shop.lotteryData,
@@ -303,14 +301,11 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             case 'verifypanel':
                 await VerifyPanel.handleVerifyPanel(interaction);
                 break;
-            case 'invite':
-                await Invite.handleInvite(interaction, services);
-                break;
             case 'invites':
-                await Invite.handleInviteLeaderboard(interaction, services);
+                await Invite.handleInvites(interaction, services);
                 break;
-            case 'referral':
-                await Referral.handleReferral(interaction, services);
+            case 'invite-leaderboard':
+                await Invite.handleInviteLeaderboard(interaction, services);
                 break;
             case 'shop':
                 await Shop.handleShop(interaction, services);

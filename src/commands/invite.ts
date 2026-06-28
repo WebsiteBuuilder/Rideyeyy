@@ -4,59 +4,38 @@ import {
   Guild,
   SlashCommandBuilder,
 } from 'discord.js';
-import { InviteStatus } from '@prisma/client';
+import { InviteStatus, RedemptionStatus } from '@prisma/client';
 import type { AppServices } from '../types';
 import { prisma } from '../lib/prisma';
-import { ephemeralEmbed, ephemeralReply } from '../utils/discord';
 import {
-  buildInviteCardEmbed,
-  buildInviteStatsEmbed,
-  buildInviteHistoryEmbed,
-  buildInviteRewardsEmbed,
-  buildInviteMilestonesEmbed,
+  BRAND,
+  COLOR,
+  ICON,
+  LINE,
+  brandedEmbed,
+  ephemeralEmbed,
+  ephemeralReply,
+  progressBar,
+} from '../utils/discord';
+import {
   buildInviteLeaderboardEmbed,
   buildLeaderboardButtons,
 } from '../utils/inviteEmbeds';
 import type { LeaderboardWindow } from '../services/invite/InviteLeaderboardService';
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  /invite  — personal invite card + detail views
-//  /invites — paginated invite leaderboard
+//  /invites — your invite dashboard (stats, milestones, recent joins)
+//  /invite-leaderboard — top inviters
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const inviteUserData = new SlashCommandBuilder()
-  .setName('invite')
-  .setDescription('View your invite card, stats, history, rewards, and milestones')
-  .addSubcommand((s) =>
-    s
-      .setName('card')
-      .setDescription('Your invite card overview')
-      .addUserOption((o) => o.setName('user').setDescription('View another member').setRequired(false))
-  )
-  .addSubcommand((s) =>
-    s
-      .setName('stats')
-      .setDescription('Detailed invite statistics')
-      .addUserOption((o) => o.setName('user').setDescription('View another member').setRequired(false))
-  )
-  .addSubcommand((s) =>
-    s
-      .setName('history')
-      .setDescription('Recent invites you brought in')
-      .addUserOption((o) => o.setName('user').setDescription('View another member').setRequired(false))
-  )
-  .addSubcommand((s) =>
-    s
-      .setName('rewards')
-      .setDescription('Your invite reward history')
-      .addUserOption((o) => o.setName('user').setDescription('View another member').setRequired(false))
-  )
-  .addSubcommand((s) =>
-    s.setName('milestones').setDescription('Invite milestones and your progress'));
-
-export const invitesLeaderboardData = new SlashCommandBuilder()
+export const invitesData = new SlashCommandBuilder()
   .setName('invites')
-  .setDescription('Invite leaderboard')
+  .setDescription('Your invite stats, milestones, rewards, and recent joins')
+  .addUserOption((o) => o.setName('user').setDescription('View another member').setRequired(false));
+
+export const inviteLeaderboardData = new SlashCommandBuilder()
+  .setName('invite-leaderboard')
+  .setDescription('Top inviters leaderboard')
   .addStringOption((o) =>
     o
       .setName('window')
@@ -69,7 +48,22 @@ export const invitesLeaderboardData = new SlashCommandBuilder()
       )
   );
 
-export async function handleInvite(
+function statusLabel(status: InviteStatus): string {
+  switch (status) {
+    case InviteStatus.REWARDED:
+      return `${ICON.check} Rewarded`;
+    case InviteStatus.VERIFIED:
+      return `${ICON.check} Verified`;
+    case InviteStatus.PENDING:
+      return '⏳ Pending';
+    case InviteStatus.FAKE:
+      return `${ICON.cross} Rejected`;
+    default:
+      return status;
+  }
+}
+
+export async function handleInvites(
   interaction: ChatInputCommandInteraction,
   services: AppServices
 ): Promise<void> {
@@ -78,73 +72,66 @@ export async function handleInvite(
     await ephemeralReply(interaction, 'Use this command inside the server.');
     return;
   }
-  const sub = interaction.options.getSubcommand();
   const target = interaction.options.getUser('user') ?? interaction.user;
-  const guild = interaction.guild;
 
-  switch (sub) {
-    case 'card': {
-      const cfg = await services.invite.admin.getConfig(guildId);
-      const stats = await prisma.inviteUserStats.findUnique({
-        where: { guildId_userId: { guildId, userId: target.id } },
-      });
-      const { rank, total } = await services.invite.leaderboard.getUserRank(guildId, target.id);
-      const verified = stats?.verified ?? 0;
-      const nextMilestone = await prisma.inviteMilestone.findFirst({
-        where: { guildId, enabled: true, threshold: { gt: verified } },
-        orderBy: { threshold: 'asc' },
-      });
-      await ephemeralEmbed(
-        interaction,
-        buildInviteCardEmbed({ user: target, guild, stats, rank, total, rewardAmount: cfg.rewardAmount, nextMilestone })
-      );
-      return;
-    }
-    case 'stats': {
-      const stats = await prisma.inviteUserStats.findUnique({
-        where: { guildId_userId: { guildId, userId: target.id } },
-      });
-      await ephemeralEmbed(interaction, buildInviteStatsEmbed(target, guild, stats));
-      return;
-    }
-    case 'history': {
-      const joins = await prisma.inviteJoin.findMany({
-        where: { guildId, inviterUserId: target.id },
-        orderBy: { joinedAt: 'desc' },
-        take: 15,
-      });
-      await ephemeralEmbed(interaction, buildInviteHistoryEmbed(target, guild, joins));
-      return;
-    }
-    case 'rewards': {
-      const rewards = await prisma.inviteReward.findMany({
-        where: { guildId, inviterUserId: target.id },
-        orderBy: { createdAt: 'desc' },
-        take: 15,
-      });
-      await ephemeralEmbed(interaction, buildInviteRewardsEmbed(target, guild, rewards));
-      return;
-    }
-    case 'milestones': {
-      const verified = await prisma.inviteJoin.count({
-        where: { guildId, inviterUserId: interaction.user.id, status: { in: [InviteStatus.VERIFIED, InviteStatus.REWARDED] } },
-      });
-      const milestones = await services.invite.admin.listMilestones(guildId);
-      const awards = await prisma.inviteMilestoneAward.findMany({
-        where: { guildId, userId: interaction.user.id },
-        select: { milestoneId: true },
-      });
-      const awardedIds = new Set(awards.map((a) => a.milestoneId));
-      const awardedThresholds = new Set(milestones.filter((m) => awardedIds.has(m.id)).map((m) => m.threshold));
-      await ephemeralEmbed(
-        interaction,
-        buildInviteMilestonesEmbed(interaction.user, guild, milestones, verified, awardedThresholds)
-      );
-      return;
-    }
-    default:
-      await ephemeralReply(interaction, 'Unknown subcommand.');
-  }
+  const [stats, pendingCount, cfg, tickets, activeCodes, recentJoins] = await Promise.all([
+    prisma.inviteUserStats.findUnique({ where: { guildId_userId: { guildId, userId: target.id } } }),
+    prisma.inviteJoin.count({ where: { guildId, inviterUserId: target.id, status: InviteStatus.PENDING } }),
+    services.invite.admin.getConfig(guildId),
+    services.lottery.getTickets(guildId, target.id),
+    services.redemption.listForUser(guildId, target.id, RedemptionStatus.ACTIVE),
+    prisma.inviteJoin.findMany({
+      where: { guildId, inviterUserId: target.id },
+      orderBy: { joinedAt: 'desc' },
+      take: 5,
+    }),
+  ]);
+
+  const verified = stats?.verified ?? 0;
+  const fake = stats?.fake ?? 0;
+  const rcEarned = stats?.rcEarned?.toString() ?? '0';
+  const milestonesCompleted = stats?.milestonesCompleted ?? 0;
+  const { rank, total } = await services.invite.leaderboard.getUserRank(guildId, target.id);
+
+  const nextMilestone = await prisma.inviteMilestone.findFirst({
+    where: { guildId, enabled: true, threshold: { gt: verified } },
+    orderBy: { threshold: 'asc' },
+  });
+
+  const progress = nextMilestone
+    ? `${progressBar(verified, nextMilestone.threshold)}  (${verified}/${nextMilestone.threshold})\n` +
+      `Next: **${nextMilestone.label ?? `Milestone ${nextMilestone.threshold}`}** at ${nextMilestone.threshold} invites`
+    : `${progressBar(1, 1)}\nYou've reached every milestone — legend! ${ICON.jackpot}`;
+
+  const codeLines = activeCodes.length
+    ? activeCodes.map((c) => `\`${c.code}\` — ${services.redemption.label(c.rewardKey)}`).join('\n')
+    : '_None — earn via milestones, /shop, or the lottery._';
+
+  const recentLines = recentJoins.length
+    ? recentJoins
+        .map((j) => `<@${j.invitedUserId}> — ${statusLabel(j.status)}`)
+        .join('\n')
+    : '_No invites yet — share your Discord invite link!_';
+
+  const embed = brandedEmbed(COLOR.EPIC, undefined, interaction.guild)
+    .setTitle(`${ICON.jackpot} Invites — ${target.username}`)
+    .setThumbnail(target.displayAvatarURL({ size: 256 }))
+    .setDescription(`${LINE}\n${progress}`)
+    .addFields(
+      { name: 'Verified', value: `${verified}`, inline: true },
+      { name: 'Pending', value: `${pendingCount}`, inline: true },
+      { name: 'Rejected', value: `${fake}`, inline: true },
+      { name: `${BRAND.ticker} Earned`, value: `${ICON.coin} ${rcEarned}`, inline: true },
+      { name: 'Milestones', value: `${milestonesCompleted}`, inline: true },
+      { name: 'Rank', value: rank > 0 ? `#${rank} / ${total}` : '—', inline: true },
+      { name: 'Lottery Tickets', value: `${tickets}`, inline: true },
+      { name: 'Per Verify', value: `${ICON.coin} ${cfg.rewardAmount} ${BRAND.ticker}`, inline: true },
+      { name: '\u200b', value: '\u200b', inline: true },
+      { name: 'Recent Invites', value: recentLines, inline: false },
+      { name: 'Active Reward Codes', value: codeLines, inline: false }
+    );
+
+  await ephemeralEmbed(interaction, embed);
 }
 
 export async function handleInviteLeaderboard(
@@ -179,7 +166,6 @@ export async function handleLeaderboardButton(
 ): Promise<void> {
   const guildId = interaction.guildId;
   if (!guildId) return;
-  // customId: invlb:<window>:<page>[:refresh]
   const parts = interaction.customId.split(':');
   const window = (parts[1] as LeaderboardWindow) ?? 'all';
   const page = Math.max(1, Number(parts[2]) || 1);

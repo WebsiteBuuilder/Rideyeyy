@@ -45,6 +45,7 @@ const PANEL_META: Record<PanelKey, { title: string; icon: string; color: number;
       '• Share your personal invite link to bring people into the server.',
       '• Each verified member you invite counts toward your milestones.',
       '• Hit a milestone and Route Cash rewards are credited automatically.',
+      '• Check progress with `/invites` or the leaderboard with `/invite-leaderboard`.',
       '',
       '_Fake, self, or rejoining invites do not count._',
       '',
