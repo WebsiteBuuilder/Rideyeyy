@@ -24,7 +24,7 @@ export const config = {
     provider:   process.env['PROVIDER_ROLE_ID']  ?? '0',
     vip:        process.env['VIP_ROLE_ID']       ?? '',
     exclusive:  process.env['EXCLUSIVE_ROLE_ID'] ?? '',
-    rider:      process.env['RIDER_ROLE_ID']     ?? '0',
+    rider:      process.env['RIDER_ROLE_ID']     ?? '1510042972371292222',
     unverified: process.env['UNVERIFIED_ROLE_ID'] ?? '1520555170889469972',
   },
 
