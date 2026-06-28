@@ -95,7 +95,7 @@ exports.config = {
         // Default shop catalogue (upserted by key on first run).
         defaultShopItems: [
             { key: 'RIDE_DISCOUNT_5', label: '$5 Ride Discount', priceRc: 300, rewardKey: 'RIDE_DISCOUNT_5', sortOrder: 1 },
-            { key: 'RIDE_FREE_20', label: 'FREE $20 Ride', priceRc: 1800, rewardKey: 'RIDE_FREE_20', sortOrder: 2 },
+            { key: 'RIDE_FREE_20', label: 'FREE $20 Ride', priceRc: 2000, rewardKey: 'RIDE_FREE_20', sortOrder: 2 },
         ],
         lottery: {
             // Weekly draw schedule (UTC). 0 = Sunday.
