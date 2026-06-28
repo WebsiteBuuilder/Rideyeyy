@@ -431,3 +431,6 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- Seed the booking sequence counter (no-op if it already exists)
 INSERT INTO "BookingSequence" ("id", "lastNumber") VALUES (1, 0) ON CONFLICT ("id") DO NOTHING;
+
+-- Sync default shop prices (idempotent)
+UPDATE "ShopItem" SET "priceRc" = 1800 WHERE "key" = 'RIDE_FREE_20';

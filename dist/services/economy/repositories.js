@@ -70,10 +70,9 @@ class ShopRepository {
         });
     }
     async ensureDefaults(guildId, items, db = prisma_1.prisma) {
-        await db.shopItem.createMany({
-            data: items.map((i) => ({ guildId, key: i.key, label: i.label, priceRc: i.priceRc, rewardKey: i.rewardKey, sortOrder: i.sortOrder })),
-            skipDuplicates: true,
-        });
+        for (const i of items) {
+            await this.upsert({ guildId, key: i.key, label: i.label, priceRc: i.priceRc, rewardKey: i.rewardKey, sortOrder: i.sortOrder }, db);
+        }
     }
     async remove(guildId, key, db = prisma_1.prisma) {
         const res = await db.shopItem.deleteMany({ where: { guildId, key } });

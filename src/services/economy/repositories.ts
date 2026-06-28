@@ -102,10 +102,12 @@ export class ShopRepository {
     items: ReadonlyArray<{ key: string; label: string; priceRc: number; rewardKey: string; sortOrder: number }>,
     db: Db = prisma
   ): Promise<void> {
-    await db.shopItem.createMany({
-      data: items.map((i) => ({ guildId, key: i.key, label: i.label, priceRc: i.priceRc, rewardKey: i.rewardKey, sortOrder: i.sortOrder })),
-      skipDuplicates: true,
-    });
+    for (const i of items) {
+      await this.upsert(
+        { guildId, key: i.key, label: i.label, priceRc: i.priceRc, rewardKey: i.rewardKey, sortOrder: i.sortOrder },
+        db
+      );
+    }
   }
 
   async remove(guildId: string, key: string, db: Db = prisma): Promise<boolean> {
