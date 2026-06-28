@@ -36,8 +36,10 @@ async function handleRc(interaction, services) {
         return;
     }
     const member = interaction.member;
-    if (!member || !(0, discord_1.hasStaffRole)(member)) {
-        await (0, discord_1.ephemeralReply)(interaction, 'Only staff can adjust Route Cash balances.');
+    const isStaff = member != null && (0, discord_1.hasStaffRole)(member);
+    const isDiscordAdmin = interaction.memberPermissions?.has(discord_js_1.PermissionFlagsBits.Administrator) ?? false;
+    if (!isStaff && !isDiscordAdmin) {
+        await (0, discord_1.ephemeralReply)(interaction, 'Only staff or administrators can adjust Route Cash balances.');
         return;
     }
     const sub = interaction.options.getSubcommand();

@@ -47,8 +47,10 @@ export async function handleRc(interaction: ChatInputCommandInteraction, service
   }
 
   const member = interaction.member as GuildMember | null;
-  if (!member || !hasStaffRole(member)) {
-    await ephemeralReply(interaction, 'Only staff can adjust Route Cash balances.');
+  const isStaff = member != null && hasStaffRole(member);
+  const isDiscordAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
+  if (!isStaff && !isDiscordAdmin) {
+    await ephemeralReply(interaction, 'Only staff or administrators can adjust Route Cash balances.');
     return;
   }
 

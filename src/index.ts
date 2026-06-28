@@ -27,6 +27,7 @@ import * as Panels from './commands/panels';
 import * as Invite from './commands/invite';
 import * as Admin from './commands/inviteAdmin';
 import * as Shop from './commands/shop';
+import * as ShopAdmin from './commands/shopAdmin';
 import * as RcAdmin from './commands/rcAdmin';
 import * as VerifyPanel from './commands/verifyPanel';
 import * as LotteryPanel from './commands/lotteryPanel';
@@ -109,6 +110,7 @@ async function registerCommands(client: Client): Promise<void> {
     Shop.rewardsData,
     Shop.redeemData,
     Shop.lotteryData,
+    ShopAdmin.shopAdminData,
     RcAdmin.rcData,
     Admin.adminData,
     VerifyPanel.verifyPanelData,
@@ -178,6 +180,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         await VerifyPanel.handleVerifyButton(btn, services);
         return;
       }
+      if (id.startsWith('shopadm:')) {
+        await ShopAdmin.handleShopAdminButton(btn, services);
+        return;
+      }
       if (id.startsWith('invadm:')) {
         await Admin.handleAdminButton(btn, services);
         return;
@@ -190,6 +196,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       const select = interaction as StringSelectMenuInteraction;
       if (select.customId === 'invadm:nav') {
         await Admin.handleAdminSelect(select, services);
+        return;
+      }
+      if (select.customId === ShopAdmin.PICK_ID) {
+        await ShopAdmin.handleShopAdminSelect(select, services);
         return;
       }
       if (select.customId === Help.HELP_NAV_ID) {
@@ -220,6 +230,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       }
       if (modal.customId === 'gudhrides-verify:modal') {
         await VerifyPanel.handleVerifyModal(modal, services);
+        return;
+      }
+      if (modal.customId.startsWith('shopadm:modal:')) {
+        await ShopAdmin.handleShopAdminModal(modal, services);
         return;
       }
       if (modal.customId.startsWith('invadm:modal:')) {
@@ -260,6 +274,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       case 'redeem':       await Shop.handleRedeem(interaction, services);         break;
       case 'lottery':      await Shop.handleLottery(interaction, services);        break;
       case 'rc':           await RcAdmin.handleRc(interaction, services);          break;
+      case 'shopadmin':    await ShopAdmin.handleShopAdmin(interaction, services);   break;
       case 'admin':        await Admin.handleAdmin(interaction, services);         break;
       case 'help':         await Help.handleHelp(interaction);                     break;
       case 'lotterypanel': await LotteryPanel.handleLotteryPanel(interaction, services); break;

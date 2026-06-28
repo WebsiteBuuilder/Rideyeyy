@@ -26,7 +26,6 @@ const SECTIONS = [
     { value: 'verification', label: 'Verification', description: 'Delay, age, messages, anti-alt', emoji: '🛡️' },
     { value: 'milestones', label: 'Milestones', description: 'RC / role / ride / tickets', emoji: '🏆' },
     { value: 'lottery', label: 'Lottery', description: 'Tickets, prize & draws', emoji: '🎟️' },
-    { value: 'shop', label: 'Reward Shop', description: 'Items & prices', emoji: '🛒' },
     { value: 'statistics', label: 'Statistics', description: 'Guild-wide analytics', emoji: '📊' },
     { value: 'leaderboard', label: 'Leaderboard', description: 'Top inviters', emoji: '🥇' },
     { value: 'logs', label: 'Logs', description: 'Recent events', emoji: '📜' },
@@ -56,11 +55,6 @@ async function handleAdmin(interaction, services) {
 async function handleAdminSelect(interaction, services) {
     if (!interaction.guildId || !isAdmin(interaction))
         return;
-    if (interaction.customId === 'invadm:shop:pick') {
-        const view = await renderSection('shop', interaction.guildId, services, interaction.values[0]);
-        await interaction.update(view);
-        return;
-    }
     const section = interaction.values[0];
     const view = await renderSection(section, interaction.guildId, services);
     await interaction.update(view);
@@ -158,39 +152,6 @@ async function handleAdminButton(interaction, services) {
         }
         return;
     }
-    // Shop item management (customId: invadm:btn:shop:<action>[:key])
-    if (section === 'shop') {
-        const itemKey = arg;
-        if (action === 'edit' && itemKey) {
-            const field = interaction.customId.split(':')[5];
-            await openShopEditModal(interaction, guildId, itemKey, field ?? 'label', services);
-            return;
-        }
-        if (action === 'itemtoggle' && itemKey) {
-            await services.shop.toggleItem(guildId, itemKey);
-            const view = await renderSection('shop', guildId, services, itemKey);
-            await interaction.update(view);
-            return;
-        }
-        if (action === 'itemremove' && itemKey) {
-            await services.shop.removeItem(guildId, itemKey);
-            const view = await renderSection('shop', guildId, services);
-            await interaction.update(view);
-            return;
-        }
-        if (action === 'itemup' && itemKey) {
-            await services.shop.moveItem(guildId, itemKey, -1);
-            const view = await renderSection('shop', guildId, services, itemKey);
-            await interaction.update(view);
-            return;
-        }
-        if (action === 'itemdown' && itemKey) {
-            await services.shop.moveItem(guildId, itemKey, 1);
-            const view = await renderSection('shop', guildId, services, itemKey);
-            await interaction.update(view);
-            return;
-        }
-    }
 }
 // ── Modals ──────────────────────────────────────────────────────────────────
 async function handleAdminModal(interaction, services) {
@@ -278,90 +239,6 @@ async function handleAdminModal(interaction, services) {
                 data.lotteryPrizeKey = prize;
             await services.invite.admin.updateConfig(guildId, data);
             await (0, discord_1.ephemeralReply)(interaction, 'Lottery settings updated.');
-            return;
-        }
-        case 'shopadd': {
-            const key = str('key').toUpperCase();
-            const label = str('label');
-            const priceRc = num('priceRc');
-            const rewardKey = str('rewardKey').toUpperCase() || key;
-            const description = str('description') || null;
-            if (!key || !label || priceRc == null || priceRc < 0) {
-                await (0, discord_1.ephemeralReply)(interaction, 'Key, label, and a non-negative price are required.');
-                return;
-            }
-            const existing = await services.shop.listAll(guildId);
-            const sortOrder = existing.find((i) => i.key === key)?.sortOrder ?? existing.length;
-            await services.shop.upsertItem({
-                guildId,
-                key,
-                label,
-                description,
-                priceRc: Math.round(priceRc),
-                rewardKey,
-                sortOrder,
-            });
-            await (0, discord_1.ephemeralReply)(interaction, `Shop item **${label}** saved (${Math.round(priceRc)} ${discord_1.BRAND.ticker}).`);
-            return;
-        }
-        case 'shopeditlabel': {
-            const key = str('key').toUpperCase();
-            const label = str('label');
-            if (!key || !label) {
-                await (0, discord_1.ephemeralReply)(interaction, 'Key and label are required.');
-                return;
-            }
-            const item = (await services.shop.listAll(guildId)).find((i) => i.key === key);
-            if (!item) {
-                await (0, discord_1.ephemeralReply)(interaction, 'Item not found.');
-                return;
-            }
-            await services.shop.upsertItem({
-                guildId,
-                key: item.key,
-                label,
-                description: item.description,
-                priceRc: item.priceRc,
-                rewardKey: item.rewardKey,
-                sortOrder: item.sortOrder,
-                enabled: item.enabled,
-            });
-            await (0, discord_1.ephemeralReply)(interaction, `Updated label for **${key}**.`);
-            return;
-        }
-        case 'shopeditprice': {
-            const key = str('key').toUpperCase();
-            const priceRc = num('priceRc');
-            if (!key || priceRc == null || priceRc < 0) {
-                await (0, discord_1.ephemeralReply)(interaction, 'Key and a non-negative price are required.');
-                return;
-            }
-            const item = (await services.shop.listAll(guildId)).find((i) => i.key === key);
-            if (!item) {
-                await (0, discord_1.ephemeralReply)(interaction, 'Item not found.');
-                return;
-            }
-            await services.shop.upsertItem({
-                guildId,
-                key: item.key,
-                label: item.label,
-                description: item.description,
-                priceRc: Math.round(priceRc),
-                rewardKey: item.rewardKey,
-                sortOrder: item.sortOrder,
-                enabled: item.enabled,
-            });
-            await (0, discord_1.ephemeralReply)(interaction, `Updated price for **${key}** (${Math.round(priceRc)} ${discord_1.BRAND.ticker}).`);
-            return;
-        }
-        case 'shopremove': {
-            const key = str('key').toUpperCase();
-            if (!key) {
-                await (0, discord_1.ephemeralReply)(interaction, 'Provide an item key to remove.');
-                return;
-            }
-            const ok = await services.shop.removeItem(guildId, key);
-            await (0, discord_1.ephemeralReply)(interaction, ok ? `Removed shop item \`${key}\`.` : 'No item with that key.');
             return;
         }
         case 'milestoneadd': {
@@ -518,7 +395,7 @@ function navRow(active) {
 function onOff(v) {
     return v ? `${discord_1.ICON.check} On` : `${discord_1.ICON.cross} Off`;
 }
-async function renderSection(section, guildId, services, shopSelectedKey) {
+async function renderSection(section, guildId, services) {
     const cfg = await services.invite.admin.getConfig(guildId);
     const nav = navRow(section);
     const rows = [nav];
@@ -561,61 +438,6 @@ async function renderSection(section, guildId, services, shopSelectedKey) {
                 .setDescription(`${discord_1.LINE}\nTickets accrue from the sources below and reset each draw.`)
                 .addFields({ name: 'Status', value: onOff(cfg.lotteryEnabled), inline: true }, { name: 'Current Pot', value: `${pot.totalTickets} tickets · ${pot.participants} entrants`, inline: true }, { name: 'Prize', value: services.redemption.label(cfg.lotteryPrizeKey), inline: true }, { name: 'Per Daily', value: `${cfg.ticketsPerDaily}`, inline: true }, { name: 'Per Invite', value: `${cfg.ticketsPerInvite}`, inline: true }, { name: 'Per Ride', value: `${cfg.ticketsPerRide}`, inline: true }, { name: 'Per Event', value: `${cfg.ticketsPerEvent}`, inline: true }, { name: 'Last Draw', value: lastLine, inline: false });
             rows.push(new discord_js_1.ActionRowBuilder().addComponents(modalBtn('lottery', 'lottery', 'Edit Lottery', discord_js_1.ButtonStyle.Primary), toggleBtn('lottery', 'lotteryEnabled', 'Toggle Lottery'), actionBtn('lottery', 'draw', 'Draw Now', discord_js_1.ButtonStyle.Danger)));
-            break;
-        }
-        case 'shop': {
-            const items = await services.shop.listAll(guildId);
-            const rewardKeys = Object.keys(config_1.config.economy.rewardLabels);
-            const list = items.length
-                ? items
-                    .map((it, i) => {
-                    const selected = it.key === shopSelectedKey ? ' ◀' : '';
-                    const desc = it.description ? `\n   _${it.description}_` : '';
-                    return `\`${i + 1}\` \`${it.key}\` — **${it.label}** · ${discord_1.ICON.coin} ${it.priceRc} ${discord_1.BRAND.ticker} · \`${it.rewardKey}\`${it.enabled ? '' : ' _(disabled)_'}${desc}${selected}`;
-                })
-                    .join('\n\n')
-                : '_No shop items configured._';
-            embed = (0, discord_1.brandedEmbed)(discord_1.COLOR.WIN)
-                .setTitle(`🛒 Reward Shop`)
-                .setDescription(`${discord_1.LINE}\nStatus: ${onOff(cfg.shopEnabled)}\n\n` +
-                list +
-                `\n\n**Known reward keys:** ${rewardKeys.map((k) => `\`${k}\``).join(', ')}`);
-            if (items.length) {
-                rows.push(new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.StringSelectMenuBuilder()
-                    .setCustomId('invadm:shop:pick')
-                    .setPlaceholder('Select an item to edit…')
-                    .addOptions(items.slice(0, 25).map((it) => ({
-                    label: it.label.slice(0, 100),
-                    value: it.key,
-                    description: `${it.priceRc} RC · ${it.rewardKey}`.slice(0, 100),
-                    default: it.key === shopSelectedKey,
-                })))));
-            }
-            if (shopSelectedKey) {
-                const selected = items.find((i) => i.key === shopSelectedKey);
-                if (selected) {
-                    rows.push(new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.ButtonBuilder()
-                        .setCustomId(`invadm:btn:shop:edit:${shopSelectedKey}:label`)
-                        .setLabel('Edit Label')
-                        .setStyle(discord_js_1.ButtonStyle.Primary), new discord_js_1.ButtonBuilder()
-                        .setCustomId(`invadm:btn:shop:edit:${shopSelectedKey}:price`)
-                        .setLabel('Edit Price')
-                        .setStyle(discord_js_1.ButtonStyle.Primary), new discord_js_1.ButtonBuilder()
-                        .setCustomId(`invadm:btn:shop:itemtoggle:${shopSelectedKey}`)
-                        .setLabel(selected.enabled ? 'Disable' : 'Enable')
-                        .setStyle(discord_js_1.ButtonStyle.Secondary), new discord_js_1.ButtonBuilder()
-                        .setCustomId(`invadm:btn:shop:itemremove:${shopSelectedKey}`)
-                        .setLabel('Remove')
-                        .setStyle(discord_js_1.ButtonStyle.Danger)), new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.ButtonBuilder()
-                        .setCustomId(`invadm:btn:shop:itemup:${shopSelectedKey}`)
-                        .setLabel('Move Up')
-                        .setStyle(discord_js_1.ButtonStyle.Secondary), new discord_js_1.ButtonBuilder()
-                        .setCustomId(`invadm:btn:shop:itemdown:${shopSelectedKey}`)
-                        .setLabel('Move Down')
-                        .setStyle(discord_js_1.ButtonStyle.Secondary)));
-                }
-            }
-            rows.push(new discord_js_1.ActionRowBuilder().addComponents(modalBtn('shop', 'shopadd', 'Add Item', discord_js_1.ButtonStyle.Success), toggleBtn('shop', 'shopEnabled', 'Toggle Shop')));
             break;
         }
         case 'milestones': {
@@ -720,7 +542,7 @@ async function renderSection(section, guildId, services, shopSelectedKey) {
             const pot = await services.lottery.getPot(guildId);
             embed = (0, discord_1.brandedEmbed)(discord_1.COLOR.EPIC)
                 .setTitle(`${discord_1.BRAND.logo} Referral Economy — Admin`)
-                .setDescription(`${discord_1.LINE}\nUse the menu below to configure invites, milestones, the lottery, and the reward shop.`)
+                .setDescription(`${discord_1.LINE}\nUse the menu below to configure invites, milestones, and the lottery.\nManage shop items with \`/shopadmin\`.`)
                 .addFields({ name: 'Modules', value: `${onOff(cfg.rewardEnabled)} rewards · ${onOff(cfg.milestonesEnabled)} milestones · ${onOff(cfg.lotteryEnabled)} lottery · ${onOff(cfg.shopEnabled)} shop`, inline: false }, { name: 'Reward / Invite', value: `${cfg.rewardAmount} ${discord_1.BRAND.ticker}`, inline: true }, { name: 'Verify Delay', value: `${Math.round(cfg.verificationDelaySec / 60)} min`, inline: true }, { name: 'Min Age / Msgs', value: `${cfg.minAccountAgeDays}d / ${cfg.minMessages}`, inline: true }, { name: 'Verified', value: `${s.verified}`, inline: true }, { name: 'Pending', value: `${s.pending}`, inline: true }, { name: 'Fake', value: `${s.fake}`, inline: true }, { name: 'Lottery Pot', value: `${pot.totalTickets} tickets`, inline: true }, { name: 'Prize', value: services.redemption.label(cfg.lotteryPrizeKey), inline: true });
             break;
         }
@@ -748,27 +570,6 @@ function resetBtn(section, type, label) {
     return new discord_js_1.ButtonBuilder().setCustomId(`invadm:btn:${section}:reset:${type}`).setLabel(label).setStyle(discord_js_1.ButtonStyle.Danger);
 }
 // ── Modal builders ───────────────────────────────────────────────────────---
-async function openShopEditModal(interaction, guildId, itemKey, field, services) {
-    const item = (await services.shop.listAll(guildId)).find((i) => i.key === itemKey);
-    if (!item) {
-        await interaction.reply({ content: 'Item not found.', flags: discord_js_1.MessageFlags.Ephemeral });
-        return;
-    }
-    const input = (id, label, value) => new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.TextInputBuilder().setCustomId(id).setLabel(label.slice(0, 45)).setStyle(discord_js_1.TextInputStyle.Short).setRequired(true).setValue(value).setMaxLength(100));
-    if (field === 'price') {
-        const builder = new discord_js_1.ModalBuilder()
-            .setCustomId('invadm:modal:shopeditprice')
-            .setTitle(`Edit Price — ${itemKey}`)
-            .addComponents(input('key', 'Item key', itemKey), input('priceRc', 'Price (RC)', String(item.priceRc)));
-        await interaction.showModal(builder);
-        return;
-    }
-    const builder = new discord_js_1.ModalBuilder()
-        .setCustomId('invadm:modal:shopeditlabel')
-        .setTitle(`Edit Label — ${itemKey}`)
-        .addComponents(input('key', 'Item key', itemKey), input('label', 'Display label', item.label));
-    await interaction.showModal(builder);
-}
 async function openSectionModal(interaction, modal, services) {
     const guildId = interaction.guildId;
     const cfg = await services.invite.admin.getConfig(guildId);
@@ -786,12 +587,6 @@ async function openSectionModal(interaction, modal, services) {
             break;
         case 'lottery':
             builder = new discord_js_1.ModalBuilder().setCustomId('invadm:modal:lottery').setTitle('Lottery Settings').addComponents(input('perDaily', 'Tickets per /daily', String(cfg.ticketsPerDaily)), input('perInvite', 'Tickets per verified invite', String(cfg.ticketsPerInvite)), input('perRide', 'Tickets per completed ride', String(cfg.ticketsPerRide)), input('perEvent', 'Tickets per event', String(cfg.ticketsPerEvent)), input('prizeKey', 'Prize reward key', cfg.lotteryPrizeKey));
-            break;
-        case 'shopadd':
-            builder = new discord_js_1.ModalBuilder().setCustomId('invadm:modal:shopadd').setTitle('Add Shop Item').addComponents(input('key', 'Item key (unique)', '', true), input('label', 'Display label', '', true), input('priceRc', 'Price (RC)', '', true), input('rewardKey', `Reward key (${Object.keys(config_1.config.economy.rewardLabels).join(', ')})`, '', false), input('description', 'Description (optional)', ''));
-            break;
-        case 'shopremove':
-            builder = new discord_js_1.ModalBuilder().setCustomId('invadm:modal:shopremove').setTitle('Remove Shop Item').addComponents(input('key', 'Item key to remove', '', true));
             break;
         case 'milestoneadd':
             builder = new discord_js_1.ModalBuilder().setCustomId('invadm:modal:milestoneadd').setTitle('Add / Edit Milestone').addComponents(input('threshold', 'Invite threshold', '', true), input('rewardAmount', 'Reward RC (0 = none)', '0'), input('roleId', 'Reward role ID (optional)', ''), input('rideKey', 'Ride reward key (optional)', ''), input('tickets', 'Lottery tickets (0 = none)', '0'));

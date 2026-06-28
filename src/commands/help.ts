@@ -160,7 +160,10 @@ function buildHelpEmbed(topic: HelpTopic): EmbedBuilder {
             `**Operations (staff)**\n` +
             `• \`/open\` — accept new bookings and show the green category\n` +
             `• \`/close\` — pause bookings and show the red category\n` +
-            `• \`/rc give\` · \`/rc take\` — adjust member Route Cash balances\n\n` +
+            `• \`/rc give user:@member amount:500\` — grant Route Cash\n` +
+            `• \`/rc take user:@member amount:200\` — remove Route Cash\n\n` +
+            `**Shop (administrator)**\n` +
+            `• \`/shopadmin\` — add, edit, reorder, and remove shop items\n\n` +
             `_Need Provider access? Ask staff._`
         );
 

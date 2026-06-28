@@ -59,6 +59,7 @@ const Panels = __importStar(require("./commands/panels"));
 const Invite = __importStar(require("./commands/invite"));
 const Admin = __importStar(require("./commands/inviteAdmin"));
 const Shop = __importStar(require("./commands/shop"));
+const ShopAdmin = __importStar(require("./commands/shopAdmin"));
 const RcAdmin = __importStar(require("./commands/rcAdmin"));
 const VerifyPanel = __importStar(require("./commands/verifyPanel"));
 const LotteryPanel = __importStar(require("./commands/lotteryPanel"));
@@ -134,6 +135,7 @@ async function registerCommands(client) {
         Shop.rewardsData,
         Shop.redeemData,
         Shop.lotteryData,
+        ShopAdmin.shopAdminData,
         RcAdmin.rcData,
         Admin.adminData,
         VerifyPanel.verifyPanelData,
@@ -199,6 +201,10 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
                 await VerifyPanel.handleVerifyButton(btn, services);
                 return;
             }
+            if (id.startsWith('shopadm:')) {
+                await ShopAdmin.handleShopAdminButton(btn, services);
+                return;
+            }
             if (id.startsWith('invadm:')) {
                 await Admin.handleAdminButton(btn, services);
                 return;
@@ -210,6 +216,10 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             const select = interaction;
             if (select.customId === 'invadm:nav') {
                 await Admin.handleAdminSelect(select, services);
+                return;
+            }
+            if (select.customId === ShopAdmin.PICK_ID) {
+                await ShopAdmin.handleShopAdminSelect(select, services);
                 return;
             }
             if (select.customId === Help.HELP_NAV_ID) {
@@ -239,6 +249,10 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             }
             if (modal.customId === 'gudhrides-verify:modal') {
                 await VerifyPanel.handleVerifyModal(modal, services);
+                return;
+            }
+            if (modal.customId.startsWith('shopadm:modal:')) {
+                await ShopAdmin.handleShopAdminModal(modal, services);
                 return;
             }
             if (modal.customId.startsWith('invadm:modal:')) {
@@ -331,6 +345,9 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
                 break;
             case 'rc':
                 await RcAdmin.handleRc(interaction, services);
+                break;
+            case 'shopadmin':
+                await ShopAdmin.handleShopAdmin(interaction, services);
                 break;
             case 'admin':
                 await Admin.handleAdmin(interaction, services);
