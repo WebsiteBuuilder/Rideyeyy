@@ -13,117 +13,39 @@ const decimal_js_1 = __importDefault(require("decimal.js"));
 const EconomyService_1 = require("../services/EconomyService");
 const math_1 = require("../utils/math");
 const discord_1 = require("../utils/discord");
+const casinoEmbeds_1 = require("../utils/casinoEmbeds");
 const config_1 = require("../config");
 // ═══════════════════════════════════════════════════════════════════════════
 //  BLACKJACK — Premium Casino Experience
 // ═══════════════════════════════════════════════════════════════════════════
-// ---------------------------------------------------------------------------
-// Card Display Helpers
-// ---------------------------------------------------------------------------
-const SUIT_ICON = { H: '♥', D: '♦', C: '♣', S: '♠' };
 const DICE_FACE = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-function cardLabel(card) {
-    return `${card.rank}${SUIT_ICON[card.suit] ?? card.suit}`;
-}
-/** Premium card tile with clean styling */
-function cardTile(card) {
-    return `\`[ ${cardLabel(card)} ]\``;
-}
-const HIDDEN_TILE = '`[ ?? ]`';
-function renderHand(hand, hideSecond = false) {
-    return hand
-        .map((c, i) => (hideSecond && i === 1 ? HIDDEN_TILE : cardTile(c)))
-        .join('  ');
-}
-function valueLabel(v, show) {
-    if (!show)
-        return '**??**';
-    if (v === 21)
-        return `**21** \`${discord_1.ICON.jackpot} BLACKJACK\``;
-    if (v > 21)
-        return `**${v}** \`${discord_1.ICON.loss} BUST\``;
-    return `**${v}**`;
-}
-// ---------------------------------------------------------------------------
-// Blackjack Result Metadata
-// ---------------------------------------------------------------------------
-const BJ_META = {
-    blackjack: { color: discord_1.COLOR.JACKPOT, title: 'BLACKJACK!', banner: `${discord_1.ICON.jackpot}  NATURAL 21  ${discord_1.ICON.jackpot}`, style: 'jackpot' },
-    win: { color: discord_1.COLOR.WIN, title: 'YOU WIN', banner: `${discord_1.ICON.win}  WINNER  ${discord_1.ICON.win}`, style: 'win' },
-    push: { color: discord_1.COLOR.NEUTRAL, title: 'PUSH', banner: '≈  TIE GAME  ≈', style: 'neutral' },
-    loss: { color: discord_1.COLOR.LOSS, title: 'DEALER WINS', banner: `${discord_1.ICON.loss}  LOSS  ${discord_1.ICON.loss}`, style: 'loss' },
-    bust: { color: discord_1.COLOR.LOSS, title: 'BUST', banner: `${discord_1.ICON.loss}  OVER 21  ${discord_1.ICON.loss}`, style: 'loss' },
-    surrender: { color: discord_1.COLOR.MUTED, title: 'SURRENDERED', banner: `${discord_1.ICON.fold}  FOLDED  ${discord_1.ICON.fold}`, style: 'neutral' },
-    timed_out: { color: discord_1.COLOR.LOSS, title: 'TIMED OUT', banner: `${discord_1.ICON.time}  EXPIRED  ${discord_1.ICON.time}`, style: 'loss' },
-    player_turn: { color: discord_1.COLOR.ACTIVE, title: 'BLACKJACK', banner: `${discord_1.ICON.cards}  YOUR TURN  ${discord_1.ICON.cards}`, style: 'info' },
-};
-// ---------------------------------------------------------------------------
-// Blackjack Embed Builder
-// ---------------------------------------------------------------------------
-function buildBlackjackEmbed(services, playerHand, dealerHand, bet, showDealer, status = 'player_turn', extras) {
-    const meta = BJ_META[status] ?? BJ_META['loss'];
-    const playerValue = services.gambling.handValue(playerHand);
-    const dealerValue = showDealer
-        ? services.gambling.handValue(dealerHand)
-        : services.gambling.handValue([dealerHand[0]]);
-    const embed = new discord_js_1.EmbedBuilder()
-        .setColor(meta.color)
-        .setAuthor({ name: `${discord_1.BRAND.icon}  ${discord_1.BRAND.name}` })
-        .setTitle(meta.title)
-        .setDescription((0, discord_1.statusBanner)(meta.banner, meta.style) +
-        `\n${discord_1.LINE}`)
-        .addFields({
-        name: `${discord_1.ICON.cards} DEALER`,
-        value: `${renderHand(dealerHand, !showDealer)}\n${valueLabel(dealerValue, showDealer)}`,
-        inline: true,
-    }, {
-        name: `${discord_1.ICON.chip} YOU`,
-        value: `${renderHand(playerHand)}\n${valueLabel(playerValue, true)}`,
-        inline: true,
-    })
-        .setFooter({ text: `Bet: ${discord_1.ICON.coin} ${(0, math_1.formatRC)(bet)}  ·  ${discord_1.BRAND.name}` })
-        .setTimestamp();
-    // Add payout info for completed games
-    if (showDealer && extras?.payout !== undefined) {
-        const won = extras.payout.gt(bet);
-        const tied = extras.payout.eq(bet);
-        const net = won ? extras.payout.sub(bet) : bet.sub(extras.payout);
-        const netDisplay = tied
-            ? '`BET RETURNED`'
-            : won
-                ? `\`+ ${(0, math_1.formatRC)(net)}\` ${discord_1.ICON.up}`
-                : `\`- ${(0, math_1.formatRC)(net)}\` ${discord_1.ICON.down}`;
-        embed.addFields({ name: discord_1.SPACER, value: discord_1.THIN_LINE, inline: false }, { name: discord_1.SPACER, value: (0, discord_1.statBlock)('PAYOUT', `${discord_1.ICON.coin} ${(0, math_1.formatRC)(extras.payout)}`), inline: true }, { name: discord_1.SPACER, value: (0, discord_1.statBlock)(won ? 'PROFIT' : tied ? 'NET' : 'LOSS', netDisplay), inline: true }, ...(extras.newBalance !== undefined
-            ? [{ name: discord_1.SPACER, value: (0, discord_1.statBlock)('BALANCE', `${discord_1.ICON.coin} ${(0, math_1.formatRC)(extras.newBalance)}`), inline: true }]
-            : []));
-    }
-    return embed;
-}
 // ---------------------------------------------------------------------------
 // Blackjack Buttons — Modern Casino Style
 // ---------------------------------------------------------------------------
 function buildBlackjackButtons(gameId, canDouble, ownerId) {
-    // customId format: "bj:<action>:<gameId>:<ownerId>" — ownerId locks the
-    // buttons to the player who started the (now public) game.
     const btns = [
         new discord_js_1.ButtonBuilder()
             .setCustomId(`bj:hit:${gameId}:${ownerId}`)
-            .setLabel(`${discord_1.ICON.hit} HIT`)
+            .setLabel('HIT')
+            .setEmoji('🃏')
             .setStyle(discord_js_1.ButtonStyle.Primary),
         new discord_js_1.ButtonBuilder()
             .setCustomId(`bj:stand:${gameId}:${ownerId}`)
-            .setLabel(`${discord_1.ICON.stand} STAND`)
+            .setLabel('STAND')
+            .setEmoji('🛑')
             .setStyle(discord_js_1.ButtonStyle.Success),
     ];
     if (canDouble) {
         btns.push(new discord_js_1.ButtonBuilder()
             .setCustomId(`bj:double:${gameId}:${ownerId}`)
-            .setLabel(`${discord_1.ICON.double} DOUBLE`)
-            .setStyle(discord_js_1.ButtonStyle.Secondary));
+            .setLabel('DOUBLE')
+            .setEmoji('⬆️')
+            .setStyle(discord_js_1.ButtonStyle.Primary));
     }
     btns.push(new discord_js_1.ButtonBuilder()
         .setCustomId(`bj:surrender:${gameId}:${ownerId}`)
-        .setLabel(`${discord_1.ICON.fold} FOLD`)
+        .setLabel('FOLD')
+        .setEmoji('🏳️')
         .setStyle(discord_js_1.ButtonStyle.Danger));
     return new discord_js_1.ActionRowBuilder().addComponents(...btns.slice(0, 5));
 }
@@ -245,7 +167,7 @@ async function handleBlackjack(interaction, services) {
         const game = await services.gambling.startBlackjack(interaction.user.id, bet);
         const isCompleted = game.status === 'completed';
         const balance = isCompleted ? await services.economy.getBalance(interaction.user.id) : undefined;
-        const embed = buildBlackjackEmbed(services, game.playerHand, game.dealerHand, bet, isCompleted, isCompleted ? 'blackjack' : 'player_turn', isCompleted && balance !== undefined
+        const embed = (0, casinoEmbeds_1.buildBlackjackEmbed)(services, game.playerHand, game.dealerHand, bet, isCompleted, isCompleted ? 'blackjack' : 'player_turn', isCompleted && balance !== undefined
             ? { newBalance: balance }
             : undefined);
         const row = game.status === 'player_turn'
@@ -283,12 +205,12 @@ async function handleBlackjackButton(interaction, services) {
             const bet = new decimal_js_1.default(game?.bet_amount ?? 0);
             if (busted) {
                 const balance = await services.economy.getBalance(interaction.user.id);
-                const embed = buildBlackjackEmbed(services, playerHand, game?.dealer_hand_json ?? [], bet, true, 'bust', { payout: new decimal_js_1.default(0), newBalance: balance });
+                const embed = (0, casinoEmbeds_1.buildBlackjackEmbed)(services, playerHand, game?.dealer_hand_json ?? [], bet, true, 'bust', { payout: new decimal_js_1.default(0), newBalance: balance });
                 await interaction.update({ embeds: [embed], components: [] });
                 return;
             }
             const canDouble = game ? game.player_hand_json.length === 2 && !game.doubled : false;
-            const embed = buildBlackjackEmbed(services, playerHand, game.dealer_hand_json, bet, false);
+            const embed = (0, casinoEmbeds_1.buildBlackjackEmbed)(services, playerHand, game.dealer_hand_json, bet, false);
             await interaction.update({ embeds: [embed], components: [buildBlackjackButtons(gameId, canDouble, interaction.user.id)] });
         }
         else if (action === 'stand') {
@@ -296,7 +218,7 @@ async function handleBlackjackButton(interaction, services) {
             const game = await services.gambling.getBlackjackGame(gameId, interaction.user.id);
             const bet = new decimal_js_1.default(game?.bet_amount ?? 0);
             const balance = await services.economy.getBalance(interaction.user.id);
-            const embed = buildBlackjackEmbed(services, result.playerHand, result.dealerHand, bet, true, result.result, { payout: result.payout, newBalance: balance });
+            const embed = (0, casinoEmbeds_1.buildBlackjackEmbed)(services, result.playerHand, result.dealerHand, bet, true, result.result, { payout: result.payout, newBalance: balance });
             await interaction.update({ embeds: [embed], components: [] });
         }
         else if (action === 'double') {
@@ -304,8 +226,8 @@ async function handleBlackjackButton(interaction, services) {
             const game = await services.gambling.getBlackjackGame(gameId, interaction.user.id);
             const bet = new decimal_js_1.default(game?.bet_amount ?? 0);
             const balance = await services.economy.getBalance(interaction.user.id);
-            const status = result.busted ? 'bust' : result.result;
-            const embed = buildBlackjackEmbed(services, result.playerHand, result.dealerHand ?? game?.dealer_hand_json ?? [], bet, true, status, { payout: result.payout ?? new decimal_js_1.default(0), newBalance: balance });
+            const status = (result.busted ? 'bust' : result.result);
+            const embed = (0, casinoEmbeds_1.buildBlackjackEmbed)(services, result.playerHand, result.dealerHand ?? game?.dealer_hand_json ?? [], bet, true, status, { payout: result.payout ?? new decimal_js_1.default(0), newBalance: balance });
             await interaction.update({ embeds: [embed], components: [] });
         }
         else if (action === 'surrender') {
@@ -313,16 +235,8 @@ async function handleBlackjackButton(interaction, services) {
             const balance = await services.economy.getBalance(interaction.user.id);
             const game = await services.gambling.getBlackjackGame(gameId, interaction.user.id);
             const bet = new decimal_js_1.default(game?.bet_amount ?? 0);
-            const embed = new discord_js_1.EmbedBuilder()
-                .setColor(discord_1.COLOR.MUTED)
-                .setAuthor({ name: `${discord_1.BRAND.icon}  ${discord_1.BRAND.name}` })
-                .setTitle('SURRENDERED')
-                .setDescription((0, discord_1.statusBanner)(`${discord_1.ICON.fold}  FOLDED EARLY  ${discord_1.ICON.fold}`, 'neutral') +
-                `\nHalf your bet has been returned.\n` +
-                `${discord_1.LINE}`)
-                .addFields({ name: discord_1.SPACER, value: (0, discord_1.statBlock)('BET', `${discord_1.ICON.coin} ${(0, math_1.formatRC)(bet)}`), inline: true }, { name: discord_1.SPACER, value: (0, discord_1.statBlock)('RETURNED', `${discord_1.ICON.coin} ${(0, math_1.formatRC)(bet.div(2))}`), inline: true }, { name: discord_1.SPACER, value: (0, discord_1.statBlock)('BALANCE', `${discord_1.ICON.coin} ${(0, math_1.formatRC)(balance)}`), inline: true })
-                .setTimestamp()
-                .setFooter({ text: `${discord_1.BRAND.name}  ·  ${discord_1.BRAND.tagline}` });
+            const returned = bet.div(2);
+            const embed = (0, casinoEmbeds_1.buildBlackjackEmbed)(services, game?.player_hand_json ?? [], game?.dealer_hand_json ?? [], bet, true, 'surrender', { payout: returned, newBalance: balance });
             await interaction.update({ embeds: [embed], components: [] });
         }
     }

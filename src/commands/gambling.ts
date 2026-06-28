@@ -9,144 +9,29 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 import Decimal from 'decimal.js';
-import type { AppServices, Card } from '../types';
+import type { AppServices } from '../types';
 import { InsufficientFundsError } from '../services/EconomyService';
 import { parseAmount, formatRC } from '../utils/math';
 import {
   ephemeralReply,
   checkCooldown,
   enforceCasinoChannel,
-  gameEmbed,
-  brandedEmbed,
   COLOR,
   LINE,
-  THIN_LINE,
   SPACER,
   ICON,
   BRAND,
   statBlock,
   statusBanner,
-  resultBanner,
-  publicEmbed,
 } from '../utils/discord';
+import { buildBlackjackEmbed, type BJStatus } from '../utils/casinoEmbeds';
 import { config } from '../config';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  BLACKJACK — Premium Casino Experience
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ---------------------------------------------------------------------------
-// Card Display Helpers
-// ---------------------------------------------------------------------------
-
-const SUIT_ICON: Record<string, string> = { H: '♥', D: '♦', C: '♣', S: '♠' };
 const DICE_FACE = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-
-function cardLabel(card: Card): string {
-  return `${card.rank}${SUIT_ICON[card.suit] ?? card.suit}`;
-}
-
-/** Premium card tile with clean styling */
-function cardTile(card: Card): string {
-  return `\`[ ${cardLabel(card)} ]\``;
-}
-
-const HIDDEN_TILE = '`[ ?? ]`';
-
-function renderHand(hand: Card[], hideSecond = false): string {
-  return hand
-    .map((c, i) => (hideSecond && i === 1 ? HIDDEN_TILE : cardTile(c)))
-    .join('  ');
-}
-
-function valueLabel(v: number, show: boolean): string {
-  if (!show) return '**??**';
-  if (v === 21) return `**21** \`${ICON.jackpot} BLACKJACK\``;
-  if (v > 21)  return `**${v}** \`${ICON.loss} BUST\``;
-  return `**${v}**`;
-}
-
-// ---------------------------------------------------------------------------
-// Blackjack Result Metadata
-// ---------------------------------------------------------------------------
-
-const BJ_META: Record<string, { color: number; title: string; banner: string; style: 'win' | 'loss' | 'jackpot' | 'info' | 'neutral' }> = {
-  blackjack:   { color: COLOR.JACKPOT, title: 'BLACKJACK!',     banner: `${ICON.jackpot}  NATURAL 21  ${ICON.jackpot}`, style: 'jackpot' },
-  win:         { color: COLOR.WIN,     title: 'YOU WIN',        banner: `${ICON.win}  WINNER  ${ICON.win}`,             style: 'win' },
-  push:        { color: COLOR.NEUTRAL, title: 'PUSH',           banner: '≈  TIE GAME  ≈',                               style: 'neutral' },
-  loss:        { color: COLOR.LOSS,    title: 'DEALER WINS',    banner: `${ICON.loss}  LOSS  ${ICON.loss}`,             style: 'loss' },
-  bust:        { color: COLOR.LOSS,    title: 'BUST',           banner: `${ICON.loss}  OVER 21  ${ICON.loss}`,          style: 'loss' },
-  surrender:   { color: COLOR.MUTED,   title: 'SURRENDERED',    banner: `${ICON.fold}  FOLDED  ${ICON.fold}`,           style: 'neutral' },
-  timed_out:   { color: COLOR.LOSS,    title: 'TIMED OUT',      banner: `${ICON.time}  EXPIRED  ${ICON.time}`,          style: 'loss' },
-  player_turn: { color: COLOR.ACTIVE,  title: 'BLACKJACK',      banner: `${ICON.cards}  YOUR TURN  ${ICON.cards}`,      style: 'info' },
-};
-
-// ---------------------------------------------------------------------------
-// Blackjack Embed Builder
-// ---------------------------------------------------------------------------
-
-function buildBlackjackEmbed(
-  services: AppServices,
-  playerHand: Card[],
-  dealerHand: Card[],
-  bet: Decimal,
-  showDealer: boolean,
-  status = 'player_turn',
-  extras?: { result?: string; payout?: Decimal; newBalance?: Decimal }
-): EmbedBuilder {
-  const meta = BJ_META[status] ?? BJ_META['loss'];
-  const playerValue = services.gambling.handValue(playerHand);
-  const dealerValue = showDealer
-    ? services.gambling.handValue(dealerHand)
-    : services.gambling.handValue([dealerHand[0]]);
-
-  const embed = new EmbedBuilder()
-    .setColor(meta.color)
-    .setAuthor({ name: `${BRAND.icon}  ${BRAND.name}` })
-    .setTitle(meta.title)
-    .setDescription(
-      statusBanner(meta.banner, meta.style) +
-      `\n${LINE}`
-    )
-    .addFields(
-      {
-        name: `${ICON.cards} DEALER`,
-        value: `${renderHand(dealerHand, !showDealer)}\n${valueLabel(dealerValue, showDealer)}`,
-        inline: true,
-      },
-      {
-        name: `${ICON.chip} YOU`,
-        value: `${renderHand(playerHand)}\n${valueLabel(playerValue, true)}`,
-        inline: true,
-      }
-    )
-    .setFooter({ text: `Bet: ${ICON.coin} ${formatRC(bet)}  ·  ${BRAND.name}` })
-    .setTimestamp();
-
-  // Add payout info for completed games
-  if (showDealer && extras?.payout !== undefined) {
-    const won = extras.payout.gt(bet);
-    const tied = extras.payout.eq(bet);
-    const net = won ? extras.payout.sub(bet) : bet.sub(extras.payout);
-    
-    const netDisplay = tied 
-      ? '`BET RETURNED`' 
-      : won 
-        ? `\`+ ${formatRC(net)}\` ${ICON.up}` 
-        : `\`- ${formatRC(net)}\` ${ICON.down}`;
-
-    embed.addFields(
-      { name: SPACER, value: THIN_LINE, inline: false },
-      { name: SPACER, value: statBlock('PAYOUT', `${ICON.coin} ${formatRC(extras.payout)}`), inline: true },
-      { name: SPACER, value: statBlock(won ? 'PROFIT' : tied ? 'NET' : 'LOSS', netDisplay), inline: true },
-      ...(extras.newBalance !== undefined
-        ? [{ name: SPACER, value: statBlock('BALANCE', `${ICON.coin} ${formatRC(extras.newBalance)}`), inline: true }]
-        : [])
-    );
-  }
-
-  return embed;
-}
 
 // ---------------------------------------------------------------------------
 // Blackjack Buttons — Modern Casino Style
@@ -157,16 +42,16 @@ function buildBlackjackButtons(
   canDouble: boolean,
   ownerId: string
 ): ActionRowBuilder<ButtonBuilder> {
-  // customId format: "bj:<action>:<gameId>:<ownerId>" — ownerId locks the
-  // buttons to the player who started the (now public) game.
   const btns: ButtonBuilder[] = [
     new ButtonBuilder()
       .setCustomId(`bj:hit:${gameId}:${ownerId}`)
-      .setLabel(`${ICON.hit} HIT`)
+      .setLabel('HIT')
+      .setEmoji('🃏')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`bj:stand:${gameId}:${ownerId}`)
-      .setLabel(`${ICON.stand} STAND`)
+      .setLabel('STAND')
+      .setEmoji('🛑')
       .setStyle(ButtonStyle.Success),
   ];
 
@@ -174,15 +59,17 @@ function buildBlackjackButtons(
     btns.push(
       new ButtonBuilder()
         .setCustomId(`bj:double:${gameId}:${ownerId}`)
-        .setLabel(`${ICON.double} DOUBLE`)
-        .setStyle(ButtonStyle.Secondary)
+        .setLabel('DOUBLE')
+        .setEmoji('⬆️')
+        .setStyle(ButtonStyle.Primary)
     );
   }
 
   btns.push(
     new ButtonBuilder()
       .setCustomId(`bj:surrender:${gameId}:${ownerId}`)
-      .setLabel(`${ICON.fold} FOLD`)
+      .setLabel('FOLD')
+      .setEmoji('🏳️')
       .setStyle(ButtonStyle.Danger)
   );
 
@@ -423,7 +310,7 @@ export async function handleBlackjackButton(
       const balance = await services.economy.getBalance(interaction.user.id);
 
       const embed = buildBlackjackEmbed(
-        services, result.playerHand, result.dealerHand, bet, true, result.result,
+        services, result.playerHand, result.dealerHand, bet, true, result.result as BJStatus,
         { payout: result.payout, newBalance: balance }
       );
       await interaction.update({ embeds: [embed], components: [] });
@@ -434,7 +321,7 @@ export async function handleBlackjackButton(
       const bet     = new Decimal(game?.bet_amount ?? 0);
       const balance = await services.economy.getBalance(interaction.user.id);
 
-      const status = result.busted ? 'bust' : result.result;
+      const status = (result.busted ? 'bust' : result.result) as BJStatus;
       const embed = buildBlackjackEmbed(
         services, result.playerHand, result.dealerHand ?? game?.dealer_hand_json ?? [], bet, true, status,
         { payout: result.payout ?? new Decimal(0), newBalance: balance }
@@ -446,23 +333,17 @@ export async function handleBlackjackButton(
       const balance = await services.economy.getBalance(interaction.user.id);
       const game    = await services.gambling.getBlackjackGame(gameId, interaction.user.id);
       const bet     = new Decimal(game?.bet_amount ?? 0);
+      const returned = bet.div(2);
 
-      const embed = new EmbedBuilder()
-        .setColor(COLOR.MUTED)
-        .setAuthor({ name: `${BRAND.icon}  ${BRAND.name}` })
-        .setTitle('SURRENDERED')
-        .setDescription(
-          statusBanner(`${ICON.fold}  FOLDED EARLY  ${ICON.fold}`, 'neutral') +
-          `\nHalf your bet has been returned.\n` +
-          `${LINE}`
-        )
-        .addFields(
-          { name: SPACER, value: statBlock('BET', `${ICON.coin} ${formatRC(bet)}`), inline: true },
-          { name: SPACER, value: statBlock('RETURNED', `${ICON.coin} ${formatRC(bet.div(2))}`), inline: true },
-          { name: SPACER, value: statBlock('BALANCE', `${ICON.coin} ${formatRC(balance)}`), inline: true }
-        )
-        .setTimestamp()
-        .setFooter({ text: `${BRAND.name}  ·  ${BRAND.tagline}` });
+      const embed = buildBlackjackEmbed(
+        services,
+        game?.player_hand_json ?? [],
+        game?.dealer_hand_json ?? [],
+        bet,
+        true,
+        'surrender',
+        { payout: returned, newBalance: balance }
+      );
 
       await interaction.update({ embeds: [embed], components: [] });
     }

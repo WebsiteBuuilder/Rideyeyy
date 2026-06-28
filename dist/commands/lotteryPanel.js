@@ -8,6 +8,7 @@ const discord_js_1 = require("discord.js");
 const config_1 = require("../config");
 const prisma_1 = require("../lib/prisma");
 const discord_1 = require("../utils/discord");
+const casinoEmbeds_1 = require("../utils/casinoEmbeds");
 const lotterySchedule_1 = require("../utils/lotterySchedule");
 const panels_1 = require("./panels");
 const PANEL_KEY = 'lottery';
@@ -32,27 +33,16 @@ async function buildLotteryPanelEmbed(guildId, services) {
     const { drawDayOfWeek, drawHourUtc } = config_1.config.economy.lottery;
     const nextDraw = (0, lotterySchedule_1.nextLotteryDrawUtc)(drawDayOfWeek, drawHourUtc, new Date());
     const nextUnix = Math.floor(nextDraw.getTime() / 1000);
-    const lastLine = last?.winnerUserId
-        ? `<@${last.winnerUserId}> won on <t:${Math.floor(last.drawnAt.getTime() / 1000)}:D>`
-        : last
-            ? `No winner on <t:${Math.floor(last.drawnAt.getTime() / 1000)}:D>`
-            : '_First draw coming soon!_';
-    return (0, discord_1.brandedEmbed)(discord_1.COLOR.JACKPOT)
-        .setAuthor({ name: `${discord_1.BRAND.logo}  GUHD RIDES WEEKLY LOTTERY` })
-        .setTitle(`${discord_1.ICON.jackpot}  ${prize.toUpperCase()}`)
-        .setDescription((0, discord_1.statusBanner)(`${discord_1.ICON.jackpot}  JACKPOT LIVE  ${discord_1.ICON.jackpot}`, 'jackpot') +
-        `\n${discord_1.LINE}\n` +
-        `**Current Pot**\n` +
-        `\`${pot.totalTickets.toLocaleString()}\` tickets · **${pot.participants}** entrants\n\n` +
-        `**Grand Prize**\n` +
-        `${discord_1.ICON.win} ${prize}\n\n` +
-        `**Next Draw**\n` +
-        `<t:${nextUnix}:R> · <t:${nextUnix}:F>\n\n` +
-        `**Last Winner**\n` +
-        `${lastLine}\n\n` +
-        `_Earn tickets from \`/daily\`, invites, and completed rides. Check yours with \`/lottery\`._`)
-        .setFooter({ text: `${discord_1.BRAND.name}  ·  ${discord_1.BRAND.tagline}` })
-        .setTimestamp();
+    return (0, casinoEmbeds_1.buildLotteryEmbed)({
+        mode: 'panel',
+        prizeLabel: prize,
+        totalTickets: pot.totalTickets,
+        participants: pot.participants,
+        nextDrawUnix: nextUnix,
+        lastWinnerUserId: last?.winnerUserId ?? null,
+        lastDrawUnix: last ? Math.floor(last.drawnAt.getTime() / 1000) : null,
+        enabled: cfg.lotteryEnabled,
+    });
 }
 async function ensureLotteryPanel(client, services, guildId) {
     const guilds = guildId ? [guildId] : [...client.guilds.cache.keys()];

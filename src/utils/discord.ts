@@ -46,10 +46,10 @@ export const THIN_LINE = '─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ �
 export const SPACER = '\u200b';
 
 export const SUITS = {
-  H: { icon: '♥', color: 'red', name: 'Hearts' },
-  D: { icon: '♦', color: 'red', name: 'Diamonds' },
-  C: { icon: '♣', color: 'black', name: 'Clubs' },
-  S: { icon: '♠', color: 'black', name: 'Spades' },
+  H: { icon: '♥️', color: 'red', name: 'Hearts' },
+  D: { icon: '♦️', color: 'red', name: 'Diamonds' },
+  C: { icon: '♣️', color: 'black', name: 'Clubs' },
+  S: { icon: '♠️', color: 'black', name: 'Spades' },
 } as const;
 
 export const ICON = {
@@ -161,11 +161,11 @@ export function resultBanner(
 
 export function cardDisplay(rank: string, suit: string): string {
   const suitData = SUITS[suit as keyof typeof SUITS] ?? { icon: suit, color: 'black' };
-  return `\`[ ${rank}${suitData.icon} ]\``;
+  return `\`${rank}${suitData.icon}\``;
 }
 
 export function hiddenCard(): string {
-  return '`[ ?? ]`';
+  return '🂠 `?`';
 }
 
 export function handDisplay(

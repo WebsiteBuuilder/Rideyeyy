@@ -1,7 +1,7 @@
-import { Client, EmbedBuilder, Guild, TextChannel } from 'discord.js';
+import { Client, Guild, TextChannel } from 'discord.js';
 import { InviteConfig, RedemptionSource } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
-import { COLOR, BRAND, ICON, LINE } from '../../utils/discord';
+import { buildLotteryEmbed, buildLotteryWinnerDmEmbed } from '../../utils/casinoEmbeds';
 import { InviteLoggingService } from '../invite/InviteLoggingService';
 import { LotteryRepository } from './repositories';
 import { RedemptionService } from './RedemptionService';
@@ -105,22 +105,22 @@ export class LotteryService {
       const channel = await client.channels.fetch(channelId).catch(() => null);
       if (!channel || !channel.isTextBased() || channel.isDMBased()) return;
 
-      const embed = new EmbedBuilder()
-        .setColor(COLOR.JACKPOT)
-        .setAuthor({ name: `${BRAND.logo}  Weekly Lottery` })
-        .setTitle(`${ICON.jackpot} Weekly Lottery Results`)
-        .setTimestamp();
+      const prizeLabel = this.redemption.label(outcome.prizeKey);
+      const embed = buildLotteryEmbed({
+        mode: 'results',
+        prizeLabel,
+        totalTickets: outcome.totalTickets,
+        participants: outcome.participants,
+        resultsDetail: {
+          winnerUserId: outcome.winnerUserId,
+          totalTickets: outcome.totalTickets,
+          participants: outcome.participants,
+        },
+      });
 
       if (outcome.winnerUserId) {
-        embed.setDescription(
-          `${LINE}\n${ICON.win} Winner: <@${outcome.winnerUserId}>\n` +
-            `Prize: **${this.redemption.label(outcome.prizeKey)}**\n` +
-            `Entrants: **${outcome.participants}** · Tickets: **${outcome.totalTickets}**\n\n` +
-            `_Tickets have been reset for the new week. Earn more by being active!_`
-        );
         await (channel as TextChannel).send({ content: `<@${outcome.winnerUserId}>`, embeds: [embed] });
       } else {
-        embed.setDescription(`${LINE}\nNo tickets were entered this week — no winner. A new week begins now!`);
         await (channel as TextChannel).send({ embeds: [embed] });
       }
     } catch (err) {
@@ -131,12 +131,7 @@ export class LotteryService {
   private async dmWinner(client: Client, userId: string, prizeKey: string, code: string): Promise<void> {
     try {
       const user = await client.users.fetch(userId);
-      const embed = new EmbedBuilder()
-        .setColor(COLOR.WIN)
-        .setAuthor({ name: `${BRAND.logo}  Weekly Lottery` })
-        .setTitle(`${ICON.jackpot} You won the weekly lottery!`)
-        .setDescription(`Your prize: **${this.redemption.label(prizeKey)}**\nRedemption code: \`${code}\`\n\nShow this code to staff to claim your reward.`)
-        .setTimestamp();
+      const embed = buildLotteryWinnerDmEmbed(this.redemption.label(prizeKey), code);
       await user.send({ embeds: [embed] });
     } catch {
       /* DMs closed — code is still retrievable via /redeem listing */

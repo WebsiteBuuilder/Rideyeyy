@@ -8,6 +8,9 @@ exports.handleLottery = handleLottery;
 const discord_js_1 = require("discord.js");
 const client_1 = require("@prisma/client");
 const discord_1 = require("../utils/discord");
+const casinoEmbeds_1 = require("../utils/casinoEmbeds");
+const config_1 = require("../config");
+const lotterySchedule_1 = require("../utils/lotterySchedule");
 const wallet_1 = require("../lib/wallet");
 const ShopService_1 = require("../services/economy/ShopService");
 // ═══════════════════════════════════════════════════════════════════════════
@@ -159,18 +162,21 @@ async function handleLottery(interaction, services) {
     const mine = await services.lottery.getTickets(guildId, interaction.user.id);
     const last = await services.lottery.lastDraw(guildId);
     const odds = pot.totalTickets > 0 ? ((mine / pot.totalTickets) * 100).toFixed(1) : '0.0';
-    const lastLine = last
-        ? last.winnerUserId
-            ? `<@${last.winnerUserId}> · ${last.drawnAt.toISOString().slice(0, 10)}`
-            : `No winner · ${last.drawnAt.toISOString().slice(0, 10)}`
-        : 'No draws yet';
-    const embed = (0, discord_1.brandedEmbed)(cfg.lotteryEnabled ? discord_1.COLOR.JACKPOT : discord_1.COLOR.NEUTRAL)
-        .setTitle(`🎟️ Weekly Lottery`)
-        .setDescription(`${discord_1.LINE}\n${cfg.lotteryEnabled ? 'Earn tickets by being active — the more you have, the better your odds!' : '_The lottery is currently paused._'}`)
-        .addFields({ name: 'Prize', value: services.redemption.label(cfg.lotteryPrizeKey), inline: true }, { name: 'Total Pot', value: `${pot.totalTickets} tickets`, inline: true }, { name: 'Entrants', value: `${pot.participants}`, inline: true }, { name: 'Your Tickets', value: `${mine}`, inline: true }, { name: 'Your Odds', value: `${odds}%`, inline: true }, { name: 'Last Winner', value: lastLine, inline: true }, {
-        name: 'How to earn tickets',
-        value: `/daily +${cfg.ticketsPerDaily} · verified invite +${cfg.ticketsPerInvite} · completed ride +${cfg.ticketsPerRide}`,
-        inline: false,
+    const prize = services.redemption.label(cfg.lotteryPrizeKey);
+    const { drawDayOfWeek, drawHourUtc } = config_1.config.economy.lottery;
+    const nextDraw = (0, lotterySchedule_1.nextLotteryDrawUtc)(drawDayOfWeek, drawHourUtc, new Date());
+    const nextUnix = Math.floor(nextDraw.getTime() / 1000);
+    const embed = (0, casinoEmbeds_1.buildLotteryEmbed)({
+        mode: 'personal',
+        prizeLabel: prize,
+        totalTickets: pot.totalTickets,
+        participants: pot.participants,
+        nextDrawUnix: nextUnix,
+        lastWinnerUserId: last?.winnerUserId ?? null,
+        lastDrawUnix: last ? Math.floor(last.drawnAt.getTime() / 1000) : null,
+        enabled: cfg.lotteryEnabled,
+        yourTickets: mine,
+        yourOdds: odds,
     });
     await (0, discord_1.ephemeralEmbed)(interaction, embed);
 }

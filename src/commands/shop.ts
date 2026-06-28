@@ -12,6 +12,9 @@ import {
 import { RedemptionStatus } from '@prisma/client';
 import type { AppServices } from '../types';
 import { COLOR, BRAND, ICON, LINE, brandedEmbed, ephemeralEmbed, ephemeralReply, hasStaffRole } from '../utils/discord';
+import { buildLotteryEmbed } from '../utils/casinoEmbeds';
+import { config } from '../config';
+import { nextLotteryDrawUtc } from '../utils/lotterySchedule';
 import { getBalance } from '../lib/wallet';
 import { ShopPurchaseError } from '../services/economy/ShopService';
 
@@ -190,28 +193,22 @@ export async function handleLottery(interaction: ChatInputCommandInteraction, se
   const mine = await services.lottery.getTickets(guildId, interaction.user.id);
   const last = await services.lottery.lastDraw(guildId);
   const odds = pot.totalTickets > 0 ? ((mine / pot.totalTickets) * 100).toFixed(1) : '0.0';
+  const prize = services.redemption.label(cfg.lotteryPrizeKey);
+  const { drawDayOfWeek, drawHourUtc } = config.economy.lottery;
+  const nextDraw = nextLotteryDrawUtc(drawDayOfWeek, drawHourUtc, new Date());
+  const nextUnix = Math.floor(nextDraw.getTime() / 1000);
 
-  const lastLine = last
-    ? last.winnerUserId
-      ? `<@${last.winnerUserId}> · ${last.drawnAt.toISOString().slice(0, 10)}`
-      : `No winner · ${last.drawnAt.toISOString().slice(0, 10)}`
-    : 'No draws yet';
-
-  const embed = brandedEmbed(cfg.lotteryEnabled ? COLOR.JACKPOT : COLOR.NEUTRAL)
-    .setTitle(`🎟️ Weekly Lottery`)
-    .setDescription(`${LINE}\n${cfg.lotteryEnabled ? 'Earn tickets by being active — the more you have, the better your odds!' : '_The lottery is currently paused._'}`)
-    .addFields(
-      { name: 'Prize', value: services.redemption.label(cfg.lotteryPrizeKey), inline: true },
-      { name: 'Total Pot', value: `${pot.totalTickets} tickets`, inline: true },
-      { name: 'Entrants', value: `${pot.participants}`, inline: true },
-      { name: 'Your Tickets', value: `${mine}`, inline: true },
-      { name: 'Your Odds', value: `${odds}%`, inline: true },
-      { name: 'Last Winner', value: lastLine, inline: true },
-      {
-        name: 'How to earn tickets',
-        value: `/daily +${cfg.ticketsPerDaily} · verified invite +${cfg.ticketsPerInvite} · completed ride +${cfg.ticketsPerRide}`,
-        inline: false,
-      }
-    );
+  const embed = buildLotteryEmbed({
+    mode: 'personal',
+    prizeLabel: prize,
+    totalTickets: pot.totalTickets,
+    participants: pot.participants,
+    nextDrawUnix: nextUnix,
+    lastWinnerUserId: last?.winnerUserId ?? null,
+    lastDrawUnix: last ? Math.floor(last.drawnAt.getTime() / 1000) : null,
+    enabled: cfg.lotteryEnabled,
+    yourTickets: mine,
+    yourOdds: odds,
+  });
   await ephemeralEmbed(interaction, embed);
 }

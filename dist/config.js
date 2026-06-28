@@ -57,6 +57,11 @@ exports.config = {
         streakBonus: Number(process.env['DAILY_STREAK_BONUS'] ?? 10),
         maxStreak: Number(process.env['DAILY_MAX_STREAK'] ?? 7),
     },
+    // Optional embed thumbnail URLs (BJ / lottery casino embeds).
+    assets: {
+        blackjackThumbnail: process.env['BJ_THUMBNAIL_URL'] ?? '',
+        lotteryThumbnail: process.env['LOTTERY_THUMBNAIL_URL'] ?? '',
+    },
     // Rate limits
     limits: {
         commandCooldownMs: Number(process.env['COMMAND_COOLDOWN_MS'] ?? 3000),

@@ -69,10 +69,10 @@ exports.LINE = '━━━━━━━━━━━━━━━━━━━━━�
 exports.THIN_LINE = '─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─';
 exports.SPACER = '\u200b';
 exports.SUITS = {
-    H: { icon: '♥', color: 'red', name: 'Hearts' },
-    D: { icon: '♦', color: 'red', name: 'Diamonds' },
-    C: { icon: '♣', color: 'black', name: 'Clubs' },
-    S: { icon: '♠', color: 'black', name: 'Spades' },
+    H: { icon: '♥️', color: 'red', name: 'Hearts' },
+    D: { icon: '♦️', color: 'red', name: 'Diamonds' },
+    C: { icon: '♣️', color: 'black', name: 'Clubs' },
+    S: { icon: '♠️', color: 'black', name: 'Spades' },
 };
 exports.ICON = {
     coin: '◈',
@@ -164,10 +164,10 @@ function resultBanner(result) {
 }
 function cardDisplay(rank, suit) {
     const suitData = exports.SUITS[suit] ?? { icon: suit, color: 'black' };
-    return `\`[ ${rank}${suitData.icon} ]\``;
+    return `\`${rank}${suitData.icon}\``;
 }
 function hiddenCard() {
-    return '`[ ?? ]`';
+    return '🂠 `?`';
 }
 function handDisplay(cards, hideIndex) {
     return cards

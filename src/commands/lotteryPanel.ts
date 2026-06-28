@@ -8,7 +8,8 @@ import {
 import { config } from '../config';
 import { prisma } from '../lib/prisma';
 import type { AppServices } from '../types';
-import { BRAND, COLOR, ICON, LINE, brandedEmbed, ephemeralReply, hasStaffRole, memberFromInteraction, statusBanner } from '../utils/discord';
+import { ephemeralReply, hasStaffRole, memberFromInteraction } from '../utils/discord';
+import { buildLotteryEmbed } from '../utils/casinoEmbeds';
 import { nextLotteryDrawUtc } from '../utils/lotterySchedule';
 import { publishPanel } from './panels';
 
@@ -36,30 +37,16 @@ export async function buildLotteryPanelEmbed(guildId: string, services: AppServi
   const nextDraw = nextLotteryDrawUtc(drawDayOfWeek, drawHourUtc, new Date());
   const nextUnix = Math.floor(nextDraw.getTime() / 1000);
 
-  const lastLine = last?.winnerUserId
-    ? `<@${last.winnerUserId}> won on <t:${Math.floor(last.drawnAt.getTime() / 1000)}:D>`
-    : last
-      ? `No winner on <t:${Math.floor(last.drawnAt.getTime() / 1000)}:D>`
-      : '_First draw coming soon!_';
-
-  return brandedEmbed(COLOR.JACKPOT)
-    .setAuthor({ name: `${BRAND.logo}  GUHD RIDES WEEKLY LOTTERY` })
-    .setTitle(`${ICON.jackpot}  ${prize.toUpperCase()}`)
-    .setDescription(
-      statusBanner(`${ICON.jackpot}  JACKPOT LIVE  ${ICON.jackpot}`, 'jackpot') +
-        `\n${LINE}\n` +
-        `**Current Pot**\n` +
-        `\`${pot.totalTickets.toLocaleString()}\` tickets · **${pot.participants}** entrants\n\n` +
-        `**Grand Prize**\n` +
-        `${ICON.win} ${prize}\n\n` +
-        `**Next Draw**\n` +
-        `<t:${nextUnix}:R> · <t:${nextUnix}:F>\n\n` +
-        `**Last Winner**\n` +
-        `${lastLine}\n\n` +
-        `_Earn tickets from \`/daily\`, invites, and completed rides. Check yours with \`/lottery\`._`
-    )
-    .setFooter({ text: `${BRAND.name}  ·  ${BRAND.tagline}` })
-    .setTimestamp();
+  return buildLotteryEmbed({
+    mode: 'panel',
+    prizeLabel: prize,
+    totalTickets: pot.totalTickets,
+    participants: pot.participants,
+    nextDrawUnix: nextUnix,
+    lastWinnerUserId: last?.winnerUserId ?? null,
+    lastDrawUnix: last ? Math.floor(last.drawnAt.getTime() / 1000) : null,
+    enabled: cfg.lotteryEnabled,
+  });
 }
 
 export async function ensureLotteryPanel(client: Client, services: AppServices, guildId?: string): Promise<void> {
