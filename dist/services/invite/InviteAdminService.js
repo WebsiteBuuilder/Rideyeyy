@@ -28,7 +28,9 @@ class InviteAdminService {
                 verificationDelaySec: config_1.config.invite.defaultVerifyDelaySec,
                 minAccountAgeDays: config_1.config.invite.defaultMinAccountAgeDays,
             },
-            update: {},
+            update: {
+                rewardAmount: config_1.config.invite.defaultReward,
+            },
         });
     }
     async ensureMilestones(guildId) {

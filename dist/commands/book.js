@@ -251,7 +251,7 @@ function buildTranscriptText(booking, lines) {
         `Customer:       ${booking.customerId}`,
         `Provider:       ${booking.providerId ?? 'Unassigned'}`,
         `Status:         ${booking.status}`,
-        `Completed At:   ${new Date().toISOString()}`,
+        `${booking.status === 'CANCELLED' ? 'Cancelled' : 'Completed'} At: ${new Date().toISOString()}`,
         '═══════════════════════════════════════════',
         '',
     ].join('\n');
@@ -262,7 +262,7 @@ function buildTranscriptText(booking, lines) {
  * delete the ticket channel after a short delay. Best-effort: failures here must
  * never block booking completion.
  */
-async function saveTranscriptAndScheduleDelete(client, booking) {
+async function saveTranscriptAndScheduleDelete(client, booking, channelNotice = 'Booking completed. Transcript saved — this ticket will be deleted in 30 seconds.') {
     if (!booking.channelId)
         return;
     try {
@@ -301,7 +301,7 @@ async function saveTranscriptAndScheduleDelete(client, booking) {
             }
         }
         try {
-            await channel.send('Booking completed. Transcript saved — this ticket will be deleted in 30 seconds.');
+            await channel.send(channelNotice);
         }
         catch {
             /* notice is best-effort */
@@ -404,6 +404,7 @@ async function handleBookingActionButton(interaction, services) {
         }
         await updateTicketMessage(interaction.client, updated);
         await (0, discord_1.ephemeralReply)(interaction, `Booking **${bookingNumber}** has been cancelled.`);
+        await saveTranscriptAndScheduleDelete(interaction.client, updated, 'Booking cancelled. Transcript saved — this ticket will be deleted in 30 seconds.');
     }
 }
 async function handleReviewButton(interaction, services) {

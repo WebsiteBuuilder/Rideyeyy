@@ -28,7 +28,9 @@ export class InviteAdminService {
         verificationDelaySec: appConfig.invite.defaultVerifyDelaySec,
         minAccountAgeDays: appConfig.invite.defaultMinAccountAgeDays,
       },
-      update: {},
+      update: {
+        rewardAmount: appConfig.invite.defaultReward,
+      },
     });
   }
 

@@ -118,8 +118,8 @@ function buildHelpEmbed(topic: HelpTopic): EmbedBuilder {
           `${LINE}\n` +
             `**Invite friends and earn ${BRAND.ticker}**\n\n` +
             `1. Share your personal Discord invite link\n` +
-            `2. They join and **pass verification** in ${verify} → you earn invite ${BRAND.ticker}\n` +
-            `3. They complete their **first ride** → you get a **${firstOrderBonus} ${BRAND.ticker}** bonus (once per invite)\n\n` +
+            `2. They join and **pass verification** in ${verify} → **30 ${BRAND.ticker}**\n` +
+            `3. They complete their **first ride** → **${firstOrderBonus} ${BRAND.ticker}** bonus (once per invite)\n\n` +
             `**Commands**\n` +
             `• \`/invites\` — your stats, milestones, recent joins, and reward codes\n` +
             `• \`/invite-leaderboard\` — top inviters (all-time, weekly, monthly)\n\n` +

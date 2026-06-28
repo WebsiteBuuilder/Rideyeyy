@@ -7,6 +7,7 @@ exports.handleLeaderboardButton = handleLeaderboardButton;
 const discord_js_1 = require("discord.js");
 const client_1 = require("@prisma/client");
 const prisma_1 = require("../lib/prisma");
+const config_1 = require("../config");
 const discord_1 = require("../utils/discord");
 const inviteEmbeds_1 = require("../utils/inviteEmbeds");
 // ═══════════════════════════════════════════════════════════════════════════
@@ -83,7 +84,7 @@ async function handleInvites(interaction, services) {
         .setTitle(`${discord_1.ICON.jackpot} Invites — ${target.username}`)
         .setThumbnail(target.displayAvatarURL({ size: 256 }))
         .setDescription(`${discord_1.LINE}\n${progress}`)
-        .addFields({ name: 'Verified', value: `${verified}`, inline: true }, { name: 'Pending', value: `${pendingCount}`, inline: true }, { name: 'Rejected', value: `${fake}`, inline: true }, { name: `${discord_1.BRAND.ticker} Earned`, value: `${discord_1.ICON.coin} ${rcEarned}`, inline: true }, { name: 'Milestones', value: `${milestonesCompleted}`, inline: true }, { name: 'Rank', value: rank > 0 ? `#${rank} / ${total}` : '—', inline: true }, { name: 'Lottery Tickets', value: `${tickets}`, inline: true }, { name: 'Per Verify', value: `${discord_1.ICON.coin} ${cfg.rewardAmount} ${discord_1.BRAND.ticker}`, inline: true }, { name: '\u200b', value: '\u200b', inline: true }, { name: 'Recent Invites', value: recentLines, inline: false }, { name: 'Active Reward Codes', value: codeLines, inline: false });
+        .addFields({ name: 'Verified', value: `${verified}`, inline: true }, { name: 'Pending', value: `${pendingCount}`, inline: true }, { name: 'Rejected', value: `${fake}`, inline: true }, { name: `${discord_1.BRAND.ticker} Earned`, value: `${discord_1.ICON.coin} ${rcEarned}`, inline: true }, { name: 'Milestones', value: `${milestonesCompleted}`, inline: true }, { name: 'Rank', value: rank > 0 ? `#${rank} / ${total}` : '—', inline: true }, { name: 'Lottery Tickets', value: `${tickets}`, inline: true }, { name: 'Per Verify', value: `${discord_1.ICON.coin} ${cfg.rewardAmount} ${discord_1.BRAND.ticker}`, inline: true }, { name: 'First Ride Bonus', value: `${discord_1.ICON.coin} ${config_1.config.inviteEconomy.firstOrderBonusRc} ${discord_1.BRAND.ticker}`, inline: true }, { name: 'Recent Invites', value: recentLines, inline: false }, { name: 'Active Reward Codes', value: codeLines, inline: false });
     await (0, discord_1.ephemeralEmbed)(interaction, embed);
 }
 async function handleInviteLeaderboard(interaction, services) {

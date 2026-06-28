@@ -7,6 +7,7 @@ import {
 import { InviteStatus, RedemptionStatus } from '@prisma/client';
 import type { AppServices } from '../types';
 import { prisma } from '../lib/prisma';
+import { config as appConfig } from '../config';
 import {
   BRAND,
   COLOR,
@@ -126,7 +127,7 @@ export async function handleInvites(
       { name: 'Rank', value: rank > 0 ? `#${rank} / ${total}` : '—', inline: true },
       { name: 'Lottery Tickets', value: `${tickets}`, inline: true },
       { name: 'Per Verify', value: `${ICON.coin} ${cfg.rewardAmount} ${BRAND.ticker}`, inline: true },
-      { name: '\u200b', value: '\u200b', inline: true },
+      { name: 'First Ride Bonus', value: `${ICON.coin} ${appConfig.inviteEconomy.firstOrderBonusRc} ${BRAND.ticker}`, inline: true },
       { name: 'Recent Invites', value: recentLines, inline: false },
       { name: 'Active Reward Codes', value: codeLines, inline: false }
     );

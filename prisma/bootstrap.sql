@@ -434,3 +434,6 @@ INSERT INTO "BookingSequence" ("id", "lastNumber") VALUES (1, 0) ON CONFLICT ("i
 
 -- Sync default shop prices (idempotent)
 UPDATE "ShopItem" SET "priceRc" = 2000 WHERE "key" = 'RIDE_FREE_20';
+
+-- Invite verify reward: 30 RC per screener-verified invite (not first-order bonus)
+UPDATE "InviteConfig" SET "rewardAmount" = 30;

@@ -87,8 +87,8 @@ function buildHelpEmbed(topic) {
                 .setDescription(`${discord_1.LINE}\n` +
                 `**Invite friends and earn ${discord_1.BRAND.ticker}**\n\n` +
                 `1. Share your personal Discord invite link\n` +
-                `2. They join and **pass verification** in ${verify} → you earn invite ${discord_1.BRAND.ticker}\n` +
-                `3. They complete their **first ride** → you get a **${firstOrderBonus} ${discord_1.BRAND.ticker}** bonus (once per invite)\n\n` +
+                `2. They join and **pass verification** in ${verify} → **30 ${discord_1.BRAND.ticker}**\n` +
+                `3. They complete their **first ride** → **${firstOrderBonus} ${discord_1.BRAND.ticker}** bonus (once per invite)\n\n` +
                 `**Commands**\n` +
                 `• \`/invites\` — your stats, milestones, recent joins, and reward codes\n` +
                 `• \`/invite-leaderboard\` — top inviters (all-time, weekly, monthly)\n\n` +

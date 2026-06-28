@@ -324,7 +324,7 @@ function buildTranscriptText(booking: Booking, lines: string[]): string {
     `Customer:       ${booking.customerId}`,
     `Provider:       ${booking.providerId ?? 'Unassigned'}`,
     `Status:         ${booking.status}`,
-    `Completed At:   ${new Date().toISOString()}`,
+    `${booking.status === 'CANCELLED' ? 'Cancelled' : 'Completed'} At: ${new Date().toISOString()}`,
     '═══════════════════════════════════════════',
     '',
   ].join('\n');
@@ -336,7 +336,11 @@ function buildTranscriptText(booking: Booking, lines: string[]): string {
  * delete the ticket channel after a short delay. Best-effort: failures here must
  * never block booking completion.
  */
-async function saveTranscriptAndScheduleDelete(client: Client, booking: Booking): Promise<void> {
+async function saveTranscriptAndScheduleDelete(
+  client: Client,
+  booking: Booking,
+  channelNotice = 'Booking completed. Transcript saved — this ticket will be deleted in 30 seconds.'
+): Promise<void> {
   if (!booking.channelId) return;
   try {
     const channel = await client.channels.fetch(booking.channelId);
@@ -376,7 +380,7 @@ async function saveTranscriptAndScheduleDelete(client: Client, booking: Booking)
     }
 
     try {
-      await (channel as TextChannel).send('Booking completed. Transcript saved — this ticket will be deleted in 30 seconds.');
+      await (channel as TextChannel).send(channelNotice);
     } catch {
       /* notice is best-effort */
     }
@@ -489,6 +493,11 @@ export async function handleBookingActionButton(
     }
     await updateTicketMessage(interaction.client, updated);
     await ephemeralReply(interaction, `Booking **${bookingNumber}** has been cancelled.`);
+    await saveTranscriptAndScheduleDelete(
+      interaction.client,
+      updated,
+      'Booking cancelled. Transcript saved — this ticket will be deleted in 30 seconds.'
+    );
   }
 }
 
