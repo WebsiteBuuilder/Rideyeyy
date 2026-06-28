@@ -29,12 +29,18 @@ exports.config = {
     },
     // Channels
     channels: {
-        bookingCategory: process.env['BOOKING_CATEGORY_ID'] ?? '0',
+        bookingCategory: process.env['BOOKING_CATEGORY_ID'] ?? '1520614559298093086',
         vouch: process.env['VOUCH_CHANNEL_ID'] ?? '0',
         transcript: process.env['TRANSCRIPT_CHANNEL_ID'] ?? '1520338486467498174',
         orderHere: process.env['ORDER_CHANNEL_ID'] ?? '1509654528801243316',
         casino: process.env['CASINO_CHANNEL_ID'] ?? '1509652333070651444',
         verify: process.env['VERIFY_CHANNEL_ID'] ?? '1509654341458595890',
+        lottery: process.env['LOTTERY_CHANNEL_ID'] ?? '0',
+    },
+    // Booking open/close category display names.
+    operations: {
+        categoryOpenName: '🟢 OPEN │ GUHD RIDES',
+        categoryClosedName: '🔴 CLOSED │ GUHD RIDES',
     },
     // VaultCord-lite: backup server invite link for admin mass-DM pull.
     backup: {
@@ -51,17 +57,10 @@ exports.config = {
         streakBonus: Number(process.env['DAILY_STREAK_BONUS'] ?? 10),
         maxStreak: Number(process.env['DAILY_MAX_STREAK'] ?? 7),
     },
-    // Crate costs
-    crates: {
-        bronze: Number(process.env['CRATE_COST_BRONZE'] ?? 500),
-        silver: Number(process.env['CRATE_COST_SILVER'] ?? 1500),
-        gold: Number(process.env['CRATE_COST_GOLD'] ?? 5000),
-    },
     // Rate limits
     limits: {
         commandCooldownMs: Number(process.env['COMMAND_COOLDOWN_MS'] ?? 3000),
         gambleCooldownMs: Number(process.env['GAMBLE_COOLDOWN_MS'] ?? 5000),
-        crateCooldownMs: Number(process.env['CRATE_COOLDOWN_MS'] ?? 10000),
         bookCooldownMs: 90000,
     },
     // Invite reward system — defaults used to seed InviteConfig on first run.

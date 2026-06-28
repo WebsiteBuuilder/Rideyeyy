@@ -39,7 +39,6 @@ const prisma_1 = require("./lib/prisma");
 // Services
 const EconomyService_1 = require("./services/EconomyService");
 const UserService_1 = require("./services/UserService");
-const CrateService_1 = require("./services/CrateService");
 const GamblingService_1 = require("./services/GamblingService");
 const BookingService_1 = require("./services/BookingService");
 const ProviderStatsService_1 = require("./services/ProviderStatsService");
@@ -48,9 +47,9 @@ const InviteService_1 = require("./services/invite/InviteService");
 const MemberVerifyService_1 = require("./services/verify/MemberVerifyService");
 const EconomyServices_1 = require("./services/economy/EconomyServices");
 const SchedulerService_1 = require("./services/economy/SchedulerService");
+const OperationsService_1 = require("./services/OperationsService");
 // Command handlers
 const Economy = __importStar(require("./commands/economy"));
-const Crates = __importStar(require("./commands/crates"));
 const Gambling = __importStar(require("./commands/gambling"));
 const Book = __importStar(require("./commands/book"));
 const ProviderStats = __importStar(require("./commands/provider-stats"));
@@ -61,6 +60,8 @@ const Invite = __importStar(require("./commands/invite"));
 const Admin = __importStar(require("./commands/inviteAdmin"));
 const Shop = __importStar(require("./commands/shop"));
 const VerifyPanel = __importStar(require("./commands/verifyPanel"));
+const LotteryPanel = __importStar(require("./commands/lotteryPanel"));
+const Operations = __importStar(require("./commands/operations"));
 const Help = __importStar(require("./commands/help"));
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOTSTRAP
@@ -74,11 +75,10 @@ const invite = new InviteService_1.InviteService({
     activity: economy.activity,
 });
 const memberVerify = new MemberVerifyService_1.MemberVerifyService(invite);
-const scheduler = new SchedulerService_1.SchedulerService(economy.lottery, invite);
+const operations = new OperationsService_1.OperationsService();
 const services = {
     economy: new EconomyService_1.EconomyService(),
     user: new UserService_1.UserService(),
-    crate: new CrateService_1.CrateService(),
     gambling: new GamblingService_1.GamblingService(),
     booking: new BookingService_1.BookingService(),
     providerStats: new ProviderStatsService_1.ProviderStatsService(),
@@ -89,7 +89,11 @@ const services = {
     lottery: economy.lottery,
     activity: economy.activity,
     memberVerify,
+    operations,
 };
+const scheduler = new SchedulerService_1.SchedulerService(economy.lottery, invite, async (client, guildId) => {
+    await LotteryPanel.ensureLotteryPanel(client, services, guildId);
+});
 const client = new discord_js_1.Client({
     intents: [
         discord_js_1.GatewayIntentBits.Guilds,
@@ -113,7 +117,6 @@ async function registerCommands(client) {
         Economy.transactionsData,
         Economy.leaderboardData,
         Economy.inventoryData,
-        Crates.data,
         Gambling.coinflipData,
         Gambling.diceData,
         Gambling.blackjackData,
@@ -131,6 +134,9 @@ async function registerCommands(client) {
         Shop.lotteryData,
         Admin.adminData,
         VerifyPanel.verifyPanelData,
+        LotteryPanel.lotteryPanelData,
+        Operations.openData,
+        Operations.closeData,
         Help.helpData,
     ].map((c) => c.toJSON());
     const rest = new discord_js_1.REST().setToken(config_1.config.token);
@@ -164,10 +170,6 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             const id = btn.customId;
             if (id.startsWith('bj:')) {
                 await Gambling.handleBlackjackButton(btn, services);
-                return;
-            }
-            if (id.startsWith('crate:')) {
-                await Crates.handleCrateButton(btn, services);
                 return;
             }
             if (id.startsWith('gudhrides-book:')) {
@@ -265,9 +267,6 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             case 'inventory':
                 await Economy.handleInventory(interaction, services);
                 break;
-            case 'crate':
-                await Crates.execute(interaction, services);
-                break;
             case 'coinflip':
                 await Gambling.handleCoinflip(interaction, services);
                 break;
@@ -321,6 +320,15 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
                 break;
             case 'help':
                 await Help.handleHelp(interaction);
+                break;
+            case 'lotterypanel':
+                await LotteryPanel.handleLotteryPanel(interaction, services);
+                break;
+            case 'open':
+                await Operations.handleOpen(interaction, services);
+                break;
+            case 'close':
+                await Operations.handleClose(interaction, services);
                 break;
             default:
                 console.warn(`[Bot] Unknown command: ${interaction.commandName}`);
@@ -453,6 +461,13 @@ client.once(discord_js_1.Events.ClientReady, async (c) => {
     }
     catch (err) {
         console.error('[Bot] Failed to ensure verify panel:', err);
+    }
+    try {
+        await LotteryPanel.ensureLotteryPanel(c, services);
+        console.log('[Bot] Lottery panel ensured.');
+    }
+    catch (err) {
+        console.error('[Bot] Failed to ensure lottery panel:', err);
     }
 });
 client.login(config_1.config.token).catch((err) => {

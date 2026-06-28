@@ -96,6 +96,13 @@ async function runBookPreflight(
     await ephemeralReply(interaction, 'Bookings must be created inside a server.');
     return false;
   }
+  if (!(await services.operations.isBookingsOpen(interaction.guildId!))) {
+    await ephemeralReply(
+      interaction,
+      'Bookings are currently **closed**. Check the order channel — staff will `/open` when rides are available again.'
+    );
+    return false;
+  }
   const userId = interaction.user.id;
   if (await services.blacklist.isBlacklisted(userId)) {
     await ephemeralReply(interaction, 'You are not permitted to create bookings.');
@@ -191,6 +198,14 @@ export async function handleBookModal(
   // Acknowledge immediately; booking creation performs several DB round-trips
   // that can otherwise exceed Discord's 3s window.
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  if (!interaction.guildId || !(await services.operations.isBookingsOpen(interaction.guildId))) {
+    await ephemeralReply(
+      interaction,
+      'Bookings are currently **closed**. Check the order channel — staff will `/open` when rides are available again.'
+    );
+    return;
+  }
 
   const userId = interaction.user.id;
   const draft = services.booking.getDraft(userId);

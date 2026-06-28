@@ -6,7 +6,6 @@ import { prisma } from './lib/prisma';
 // Services
 import { EconomyService } from './services/EconomyService';
 import { UserService }    from './services/UserService';
-import { CrateService }   from './services/CrateService';
 import { GamblingService } from './services/GamblingService';
 import { BookingService } from './services/BookingService';
 import { ProviderStatsService } from './services/ProviderStatsService';
@@ -15,10 +14,10 @@ import { InviteService } from './services/invite/InviteService';
 import { MemberVerifyService } from './services/verify/MemberVerifyService';
 import { EconomyServices } from './services/economy/EconomyServices';
 import { SchedulerService } from './services/economy/SchedulerService';
+import { OperationsService } from './services/OperationsService';
 
 // Command handlers
 import * as Economy  from './commands/economy';
-import * as Crates   from './commands/crates';
 import * as Gambling from './commands/gambling';
 import * as Book from './commands/book';
 import * as ProviderStats from './commands/provider-stats';
@@ -29,6 +28,8 @@ import * as Invite from './commands/invite';
 import * as Admin from './commands/inviteAdmin';
 import * as Shop from './commands/shop';
 import * as VerifyPanel from './commands/verifyPanel';
+import * as LotteryPanel from './commands/lotteryPanel';
+import * as Operations from './commands/operations';
 import * as Help from './commands/help';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -44,12 +45,11 @@ const invite = new InviteService({
   activity: economy.activity,
 });
 const memberVerify = new MemberVerifyService(invite);
-const scheduler = new SchedulerService(economy.lottery, invite);
+const operations = new OperationsService();
 
 const services: AppServices = {
   economy:  new EconomyService(),
   user:     new UserService(),
-  crate:    new CrateService(),
   gambling: new GamblingService(),
   booking:  new BookingService(),
   providerStats: new ProviderStatsService(),
@@ -60,7 +60,12 @@ const services: AppServices = {
   lottery:    economy.lottery,
   activity:   economy.activity,
   memberVerify,
+  operations,
 };
+
+const scheduler = new SchedulerService(economy.lottery, invite, async (client, guildId) => {
+  await LotteryPanel.ensureLotteryPanel(client, services, guildId);
+});
 
 const client = new Client({
   intents: [
@@ -87,7 +92,6 @@ async function registerCommands(client: Client): Promise<void> {
     Economy.transactionsData,
     Economy.leaderboardData,
     Economy.inventoryData,
-    Crates.data,
     Gambling.coinflipData,
     Gambling.diceData,
     Gambling.blackjackData,
@@ -105,6 +109,9 @@ async function registerCommands(client: Client): Promise<void> {
     Shop.lotteryData,
     Admin.adminData,
     VerifyPanel.verifyPanelData,
+    LotteryPanel.lotteryPanelData,
+    Operations.openData,
+    Operations.closeData,
     Help.helpData,
   ].map((c) => c.toJSON());
 
@@ -142,10 +149,6 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
 
       if (id.startsWith('bj:')) {
         await Gambling.handleBlackjackButton(btn, services);
-        return;
-      }
-      if (id.startsWith('crate:')) {
-        await Crates.handleCrateButton(btn, services);
         return;
       }
       if (id.startsWith('gudhrides-book:')) {
@@ -228,7 +231,6 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       case 'transactions': await Economy.handleTransactions(interaction, services); break;
       case 'leaderboard':  await Economy.handleLeaderboard(interaction, services);  break;
       case 'inventory':    await Economy.handleInventory(interaction, services);    break;
-      case 'crate':        await Crates.execute(interaction, services);             break;
       case 'coinflip':     await Gambling.handleCoinflip(interaction, services);    break;
       case 'dice':         await Gambling.handleDice(interaction, services);        break;
       case 'blackjack':    await Gambling.handleBlackjack(interaction, services);   break;
@@ -247,6 +249,9 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       case 'lottery':      await Shop.handleLottery(interaction, services);        break;
       case 'admin':        await Admin.handleAdmin(interaction, services);         break;
       case 'help':         await Help.handleHelp(interaction);                     break;
+      case 'lotterypanel': await LotteryPanel.handleLotteryPanel(interaction, services); break;
+      case 'open':         await Operations.handleOpen(interaction, services);     break;
+      case 'close':        await Operations.handleClose(interaction, services);    break;
       default:
         console.warn(`[Bot] Unknown command: ${interaction.commandName}`);
     }
@@ -370,6 +375,12 @@ client.once(Events.ClientReady, async (c) => {
     console.log('[Bot] Verify panel ensured.');
   } catch (err) {
     console.error('[Bot] Failed to ensure verify panel:', err);
+  }
+  try {
+    await LotteryPanel.ensureLotteryPanel(c, services);
+    console.log('[Bot] Lottery panel ensured.');
+  } catch (err) {
+    console.error('[Bot] Failed to ensure lottery panel:', err);
   }
 });
 

@@ -28,7 +28,7 @@ type HelpTopic =
 const TOPICS: { value: HelpTopic; label: string; emoji: string; description: string }[] = [
   { value: 'start', label: 'Getting Started', emoji: '👋', description: 'Verify & access the server' },
   { value: 'rides', label: 'Book a Ride', emoji: '🚗', description: 'Order rides & deliveries' },
-  { value: 'economy', label: 'Route Cash', emoji: '💰', description: 'Balance, daily, crates' },
+  { value: 'economy', label: 'Route Cash', emoji: '💰', description: 'Balance, daily, leaderboard' },
   { value: 'casino', label: 'Casino', emoji: '🎰', description: 'Coinflip, dice, blackjack' },
   { value: 'referrals', label: 'Referrals', emoji: '🎟️', description: 'Invite rewards & milestones' },
   { value: 'shop', label: 'Shop & Lottery', emoji: '🛒', description: 'Spend RC, redeem codes' },
@@ -43,6 +43,7 @@ function buildHelpEmbed(topic: HelpTopic): EmbedBuilder {
   const verify = channelRef(config.channels.verify);
   const order = channelRef(config.channels.orderHere);
   const casino = channelRef(config.channels.casino);
+  const lottery = channelRef(config.channels.lottery);
   const firstOrderBonus = config.inviteEconomy.firstOrderBonusRc;
 
   switch (topic) {
@@ -68,7 +69,8 @@ function buildHelpEmbed(topic: HelpTopic): EmbedBuilder {
         .setDescription(
           `${LINE}\n` +
             `**How to order**\n` +
-            `• Tap **Book Now** in ${order}, or run \`/book\`\n` +
+            `• When bookings are **open**, tap **Book Now** in ${order} or run \`/book\`\n` +
+            `• Staff may **close** bookings — the category turns red and new orders are paused until \`/open\`\n` +
             `• Choose **Ride** or **Courier Delivery**\n` +
             `• Pick a vehicle class (rides only)\n` +
             `• Paste **Google Maps links** for pickup and dropoff\n` +
@@ -94,9 +96,7 @@ function buildHelpEmbed(topic: HelpTopic): EmbedBuilder {
             `• \`/tip\` — quick tip a member\n` +
             `• \`/transactions\` — recent history\n` +
             `• \`/stats\` · \`/rank\` · \`/leaderboard\` — standings\n` +
-            `• \`/inventory\` — items you've won\n\n` +
-            `**Crates**\n` +
-            `• \`/crate\` — open Bronze, Silver, or Gold crates for random rewards`
+            `• \`/inventory\` — reward items you've collected`
         );
 
     case 'casino':
@@ -137,6 +137,7 @@ function buildHelpEmbed(topic: HelpTopic): EmbedBuilder {
             `**Redeem**\n` +
             `• \`/redeem\` — apply a code when booking\n\n` +
             `**Weekly Lottery**\n` +
+            `• Check the live panel in ${lottery !== '_channel not set_' ? lottery : 'the lottery channel'} — pot, countdown, last winner\n` +
             `• \`/lottery\` — view the pot and your tickets\n` +
             `• Tickets from dailies, invites, completed rides, and milestones\n` +
             `• One winner drawn each week for the prize ride`
@@ -154,6 +155,9 @@ function buildHelpEmbed(topic: HelpTopic): EmbedBuilder {
             `**Stats**\n` +
             `• \`/provider-stats\` — your claims, completions, rating, revenue\n` +
             `• \`/provider-leaderboard\` — top drivers\n\n` +
+            `**Operations (staff)**\n` +
+            `• \`/open\` — accept new bookings and show the green category\n` +
+            `• \`/close\` — pause bookings and show the red category\n\n` +
             `_Need Provider access? Ask staff._`
         );
 

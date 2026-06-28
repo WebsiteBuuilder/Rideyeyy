@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SchedulerService = void 0;
 const prisma_1 = require("../../lib/prisma");
 const config_1 = require("../../config");
+const lotterySchedule_1 = require("../../utils/lotterySchedule");
 // ═══════════════════════════════════════════════════════════════════════════
 //  SchedulerService — restart-safe in-process cron. A single interval checks,
 //  per guild, whether the weekly lottery draw / weekly + monthly resets are due,
@@ -11,9 +12,10 @@ const config_1 = require("../../config");
 const DRAW_KEY = 'lottery_draw';
 const MONTHLY_KEY = 'monthly_reset';
 class SchedulerService {
-    constructor(lottery, invite) {
+    constructor(lottery, invite, onAfterDraw) {
         this.lottery = lottery;
         this.invite = invite;
+        this.onAfterDraw = onAfterDraw;
         this.timer = null;
         this.ticking = false;
     }
@@ -47,7 +49,7 @@ class SchedulerService {
         const cfg = await this.invite.admin.getConfig(guildId);
         if (!cfg.lotteryEnabled)
             return;
-        const occurrence = lastOccurrence(config_1.config.economy.lottery.drawDayOfWeek, config_1.config.economy.lottery.drawHourUtc, now);
+        const occurrence = (0, lotterySchedule_1.lastLotteryDrawUtc)(config_1.config.economy.lottery.drawDayOfWeek, config_1.config.economy.lottery.drawHourUtc, now);
         const state = await this.getState(guildId, DRAW_KEY);
         if (state.lastRunAt && state.lastRunAt >= occurrence)
             return; // already drawn this period
@@ -55,6 +57,9 @@ class SchedulerService {
         if (!guild)
             return;
         await this.lottery.drawWeekly(client, guild, cfg);
+        if (this.onAfterDraw) {
+            await this.onAfterDraw(client, guildId).catch((e) => console.error('[Scheduler] lottery panel refresh error:', e));
+        }
         if (cfg.weeklyResetEnabled) {
             await this.invite.admin.resetWeekly(guildId, 'scheduler');
         }
@@ -84,16 +89,3 @@ class SchedulerService {
     }
 }
 exports.SchedulerService = SchedulerService;
-/** Most recent occurrence of (dayOfWeek, hourUtc) at or before `now` (UTC). */
-function lastOccurrence(dayOfWeek, hourUtc, now) {
-    const candidate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hourUtc, 0, 0));
-    // Walk back day by day until we hit the target weekday at/before now.
-    for (let i = 0; i < 8; i++) {
-        const d = new Date(candidate.getTime() - i * 24 * 60 * 60 * 1000);
-        if (d.getUTCDay() === dayOfWeek && d.getTime() <= now.getTime()) {
-            return d;
-        }
-    }
-    // Fallback: a week ago (should not happen).
-    return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-}

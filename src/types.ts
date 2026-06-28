@@ -6,17 +6,6 @@ import type { Booking, ServiceType, VehicleType } from '@prisma/client';
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ---------------------------------------------------------------------------
-// Crate
-// ---------------------------------------------------------------------------
-
-export type CrateType = 'bronze' | 'silver' | 'gold';
-
-export interface CrateReward {
-  description: string;
-  rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
-}
-
-// ---------------------------------------------------------------------------
 // Cards (Blackjack)
 // ---------------------------------------------------------------------------
 
@@ -88,11 +77,6 @@ export interface IUserService {
   ensureUser(userId: string): Promise<void>;
   getActivity(userId: string): Promise<ActivityRow>;
   getInventory(userId: string): Promise<InventoryRow[]>;
-}
-
-export interface ICrateService {
-  openCrate(userId: string, type: CrateType, client: import('discord.js').Client, guildId: string): Promise<CrateReward[]>;
-  getAllRewardsSummary(): Promise<string>;
 }
 
 export interface IGamblingService {
@@ -202,7 +186,6 @@ export interface IBlacklistService {
 export interface AppServices {
   economy:  IEconomyService;
   user:     IUserService;
-  crate:    ICrateService;
   gambling: IGamblingService;
   booking:  IBookingService;
   providerStats: IProviderStatsService;
@@ -213,4 +196,5 @@ export interface AppServices {
   lottery:    import('./services/economy/LotteryService').LotteryService;
   activity:   import('./services/economy/ActivityService').ActivityService;
   memberVerify: import('./services/verify/MemberVerifyService').MemberVerifyService;
+  operations: import('./services/OperationsService').OperationsService;
 }

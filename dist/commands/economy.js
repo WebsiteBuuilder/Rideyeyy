@@ -63,7 +63,7 @@ exports.leaderboardData = new discord_js_1.SlashCommandBuilder()
     .addIntegerOption((o) => o.setName('limit').setDescription('Number of users').setMinValue(1).setMaxValue(25).setRequired(false));
 exports.inventoryData = new discord_js_1.SlashCommandBuilder()
     .setName('inventory')
-    .setDescription('View your crate rewards and items');
+    .setDescription('View your reward items and inventory');
 // ═══════════════════════════════════════════════════════════════════════════
 //  COMMAND HANDLERS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -327,7 +327,7 @@ async function handleInventory(interaction, services) {
             .setTitle(`${discord_1.ICON.chip} INVENTORY`)
             .setDescription((0, discord_1.statusBanner)('EMPTY STASH', 'neutral') +
             `\n${discord_1.LINE}\n` +
-            `Open a crate with \`/crate\` to start collecting!`);
+            `No items yet — earn rewards from the shop, lottery, and referrals.`);
         await (0, discord_1.ephemeralEmbed)(interaction, embed);
         return;
     }

@@ -13,7 +13,7 @@ exports.HELP_NAV_ID = 'help:nav';
 const TOPICS = [
     { value: 'start', label: 'Getting Started', emoji: '👋', description: 'Verify & access the server' },
     { value: 'rides', label: 'Book a Ride', emoji: '🚗', description: 'Order rides & deliveries' },
-    { value: 'economy', label: 'Route Cash', emoji: '💰', description: 'Balance, daily, crates' },
+    { value: 'economy', label: 'Route Cash', emoji: '💰', description: 'Balance, daily, leaderboard' },
     { value: 'casino', label: 'Casino', emoji: '🎰', description: 'Coinflip, dice, blackjack' },
     { value: 'referrals', label: 'Referrals', emoji: '🎟️', description: 'Invite rewards & milestones' },
     { value: 'shop', label: 'Shop & Lottery', emoji: '🛒', description: 'Spend RC, redeem codes' },
@@ -26,6 +26,7 @@ function buildHelpEmbed(topic) {
     const verify = channelRef(config_1.config.channels.verify);
     const order = channelRef(config_1.config.channels.orderHere);
     const casino = channelRef(config_1.config.channels.casino);
+    const lottery = channelRef(config_1.config.channels.lottery);
     const firstOrderBonus = config_1.config.inviteEconomy.firstOrderBonusRc;
     switch (topic) {
         case 'start':
@@ -46,7 +47,8 @@ function buildHelpEmbed(topic) {
                 .setTitle('🚗 Book a Ride or Delivery')
                 .setDescription(`${discord_1.LINE}\n` +
                 `**How to order**\n` +
-                `• Tap **Book Now** in ${order}, or run \`/book\`\n` +
+                `• When bookings are **open**, tap **Book Now** in ${order} or run \`/book\`\n` +
+                `• Staff may **close** bookings — the category turns red and new orders are paused until \`/open\`\n` +
                 `• Choose **Ride** or **Courier Delivery**\n` +
                 `• Pick a vehicle class (rides only)\n` +
                 `• Paste **Google Maps links** for pickup and dropoff\n` +
@@ -69,9 +71,7 @@ function buildHelpEmbed(topic) {
                 `• \`/tip\` — quick tip a member\n` +
                 `• \`/transactions\` — recent history\n` +
                 `• \`/stats\` · \`/rank\` · \`/leaderboard\` — standings\n` +
-                `• \`/inventory\` — items you've won\n\n` +
-                `**Crates**\n` +
-                `• \`/crate\` — open Bronze, Silver, or Gold crates for random rewards`);
+                `• \`/inventory\` — reward items you've collected`);
         case 'casino':
             return (0, discord_1.brandedEmbed)(discord_1.COLOR.JACKPOT)
                 .setTitle(`${discord_1.BRAND.icon} Casino Games`)
@@ -103,6 +103,7 @@ function buildHelpEmbed(topic) {
                 `**Redeem**\n` +
                 `• \`/redeem\` — apply a code when booking\n\n` +
                 `**Weekly Lottery**\n` +
+                `• Check the live panel in ${lottery !== '_channel not set_' ? lottery : 'the lottery channel'} — pot, countdown, last winner\n` +
                 `• \`/lottery\` — view the pot and your tickets\n` +
                 `• Tickets from dailies, invites, completed rides, and milestones\n` +
                 `• One winner drawn each week for the prize ride`);
@@ -117,6 +118,9 @@ function buildHelpEmbed(topic) {
                 `**Stats**\n` +
                 `• \`/provider-stats\` — your claims, completions, rating, revenue\n` +
                 `• \`/provider-leaderboard\` — top drivers\n\n` +
+                `**Operations (staff)**\n` +
+                `• \`/open\` — accept new bookings and show the green category\n` +
+                `• \`/close\` — pause bookings and show the red category\n\n` +
                 `_Need Provider access? Ask staff._`);
         default:
             return buildHelpEmbed('start');

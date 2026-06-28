@@ -99,7 +99,7 @@ export const leaderboardData = new SlashCommandBuilder()
 
 export const inventoryData = new SlashCommandBuilder()
   .setName('inventory')
-  .setDescription('View your crate rewards and items');
+  .setDescription('View your reward items and inventory');
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  COMMAND HANDLERS
@@ -469,7 +469,7 @@ export async function handleInventory(
       .setDescription(
         statusBanner('EMPTY STASH', 'neutral') +
         `\n${LINE}\n` +
-        `Open a crate with \`/crate\` to start collecting!`
+        `No items yet — earn rewards from the shop, lottery, and referrals.`
       );
     await ephemeralEmbed(interaction, embed);
     return;

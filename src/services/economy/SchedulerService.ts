@@ -1,6 +1,7 @@
 import { Client } from 'discord.js';
 import { prisma } from '../../lib/prisma';
 import { config } from '../../config';
+import { lastLotteryDrawUtc } from '../../utils/lotterySchedule';
 import { LotteryService } from './LotteryService';
 import type { InviteService } from '../invite/InviteService';
 
@@ -19,7 +20,8 @@ export class SchedulerService {
 
   constructor(
     private readonly lottery: LotteryService,
-    private readonly invite: InviteService
+    private readonly invite: InviteService,
+    private readonly onAfterDraw?: (client: Client, guildId: string) => Promise<void>
   ) {}
 
   start(client: Client): void {
@@ -52,7 +54,7 @@ export class SchedulerService {
     const cfg = await this.invite.admin.getConfig(guildId);
     if (!cfg.lotteryEnabled) return;
 
-    const occurrence = lastOccurrence(config.economy.lottery.drawDayOfWeek, config.economy.lottery.drawHourUtc, now);
+    const occurrence = lastLotteryDrawUtc(config.economy.lottery.drawDayOfWeek, config.economy.lottery.drawHourUtc, now);
     const state = await this.getState(guildId, DRAW_KEY);
     if (state.lastRunAt && state.lastRunAt >= occurrence) return; // already drawn this period
 
@@ -60,6 +62,9 @@ export class SchedulerService {
     if (!guild) return;
 
     await this.lottery.drawWeekly(client, guild, cfg);
+    if (this.onAfterDraw) {
+      await this.onAfterDraw(client, guildId).catch((e) => console.error('[Scheduler] lottery panel refresh error:', e));
+    }
     if (cfg.weeklyResetEnabled) {
       await this.invite.admin.resetWeekly(guildId, 'scheduler');
     }
@@ -90,18 +95,4 @@ export class SchedulerService {
       update: { lastRunAt: when },
     });
   }
-}
-
-/** Most recent occurrence of (dayOfWeek, hourUtc) at or before `now` (UTC). */
-function lastOccurrence(dayOfWeek: number, hourUtc: number, now: Date): Date {
-  const candidate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hourUtc, 0, 0));
-  // Walk back day by day until we hit the target weekday at/before now.
-  for (let i = 0; i < 8; i++) {
-    const d = new Date(candidate.getTime() - i * 24 * 60 * 60 * 1000);
-    if (d.getUTCDay() === dayOfWeek && d.getTime() <= now.getTime()) {
-      return d;
-    }
-  }
-  // Fallback: a week ago (should not happen).
-  return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 }

@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { InsufficientFundsError, ensureWallet, getBalance, adjustBalance } from '../lib/wallet';
 import type { IEconomyService, TransactionRow, LeaderboardRow } from '../types';
 
-// Re-exported so existing imports (gambling/crates) keep resolving.
+// Re-exported so existing imports (gambling) keep resolving.
 export { InsufficientFundsError };
 
 /** Thrown when a daily reward is on cooldown. */
