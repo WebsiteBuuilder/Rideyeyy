@@ -12,6 +12,7 @@ import {
   OverwriteType,
   PermissionFlagsBits,
   SlashCommandBuilder,
+  StringSelectMenuInteraction,
   TextChannel,
   TextInputBuilder,
   TextInputStyle,
@@ -32,6 +33,8 @@ import {
   buildBookingEmbed,
   buildServicePromptEmbed,
   buildServiceRow,
+  buildRewardPromptEmbed,
+  buildRewardSelectRow,
   buildVehiclePromptEmbed,
   buildVehicleRow,
 } from '../utils/bookingEmbeds';
@@ -41,6 +44,34 @@ import { triggerReviewFlow, handleReviewRating } from '../utils/reviewFlow';
 // so all booking details are collected in a single modal (max 5 inputs)
 // opened from the service/vehicle selection buttons.
 export const DETAILS_MODAL = 'gudhrides-book-details-modal';
+export const REWARD_SELECT_ID = 'gudhrides-book:reward';
+
+async function proceedToRewardOrDetails(
+  interaction: ButtonInteraction,
+  services: AppServices,
+  draft: import('../types').BookingDraft
+): Promise<void> {
+  const guildId = interaction.guildId;
+  if (!guildId) {
+    await ephemeralReply(interaction, 'Bookings must be created inside a server.');
+    return;
+  }
+  const rewards = await services.redemption.listAvailable(guildId, interaction.user.id);
+  if (rewards.length === 0) {
+    await interaction.showModal(detailsModal());
+    return;
+  }
+  await interaction.update({
+    embeds: [buildRewardPromptEmbed()],
+    components: [
+      buildRewardSelectRow(
+        rewards,
+        (key) => services.redemption.label(key),
+        (source) => services.redemption.sourceLabel(source)
+      ),
+    ],
+  });
+}
 
 export const data = new SlashCommandBuilder()
   .setName('book')
@@ -165,7 +196,7 @@ export async function handleBookButton(
     const serviceType = value as ServiceType;
     services.booking.setDraft(interaction.user.id, { serviceType });
     if (serviceType === 'COURIER') {
-      await interaction.showModal(detailsModal());
+      await proceedToRewardOrDetails(interaction, services, { serviceType });
       return;
     }
     await interaction.update({
@@ -181,12 +212,28 @@ export async function handleBookButton(
       await ephemeralReply(interaction, 'Booking session expired. Run `/book` again.');
       return;
     }
-    services.booking.setDraft(interaction.user.id, {
-      ...draft,
-      vehicleType: value as VehicleType,
-    });
-    await interaction.showModal(detailsModal());
+    const updated = { ...draft, vehicleType: value as VehicleType };
+    services.booking.setDraft(interaction.user.id, updated);
+    await proceedToRewardOrDetails(interaction, services, updated);
   }
+}
+
+export async function handleBookSelect(
+  interaction: StringSelectMenuInteraction,
+  services: AppServices
+): Promise<void> {
+  if (interaction.customId !== REWARD_SELECT_ID) return;
+
+  const draft = services.booking.getDraft(interaction.user.id);
+  if (!draft?.serviceType) {
+    await ephemeralReply(interaction, 'Booking session expired. Run `/book` again.');
+    return;
+  }
+
+  const value = interaction.values[0];
+  const redemptionId = value === 'none' ? undefined : value;
+  services.booking.setDraft(interaction.user.id, { ...draft, redemptionId });
+  await interaction.showModal(detailsModal());
 }
 
 export async function handleBookModal(
@@ -227,23 +274,34 @@ export async function handleBookModal(
   try {
     const booking = await services.booking.createBooking({
       customerId: userId,
+      guildId: interaction.guildId,
       preferredName,
       serviceType: draft.serviceType,
       vehicleType: draft.vehicleType,
       pickup,
       destination,
       notes,
+      redemptionId: draft.redemptionId,
     });
     await interaction.editReply({
       content: `Booking **${booking.bookingNumber}** created successfully!`,
     });
     await createTicketChannel(interaction.client, interaction.guildId!, booking, services);
   } catch (err) {
-    const msg = err instanceof Error && err.message === 'DUPLICATE_ROUTE'
-      ? 'You already have an active booking with the same pickup and destination.'
-      : 'Failed to create booking. Please try again.';
+    const msg =
+      err instanceof Error && err.message === 'DUPLICATE_ROUTE'
+        ? 'You already have an active booking with the same pickup and destination.'
+        : err instanceof Error && err.message === 'REWARD_UNAVAILABLE'
+          ? 'That reward is no longer available. Run `/book` again and pick another reward.'
+          : 'Failed to create booking. Please try again.';
     await ephemeralReply(interaction, msg);
   }
+}
+
+async function rewardLabelForBooking(booking: Booking, services: AppServices): Promise<string | undefined> {
+  if (!booking.redemptionId) return undefined;
+  const row = await services.redemption.findById(booking.redemptionId);
+  return row ? services.redemption.label(row.rewardKey) : undefined;
 }
 
 async function createTicketChannel(
@@ -296,7 +354,8 @@ async function createTicketChannel(
       permissionOverwrites: overwrites,
     });
 
-    const embed = buildBookingEmbed(booking);
+    const rewardLabel = await rewardLabelForBooking(booking, services);
+    const embed = buildBookingEmbed(booking, undefined, rewardLabel);
     const row = buildBookingActionRow(booking.bookingNumber, booking.status);
     const msg = await (channel as TextChannel).send({ embeds: [embed], components: [row] });
     await services.booking.updateTicketRefs(booking.bookingNumber, channel.id, msg.id);
@@ -308,6 +367,7 @@ async function createTicketChannel(
 async function updateTicketMessage(
   client: Client,
   booking: Booking,
+  services: AppServices,
   providerTag?: string
 ): Promise<void> {
   if (!booking.channelId || !booking.messageId) return;
@@ -315,7 +375,8 @@ async function updateTicketMessage(
     const channel = await client.channels.fetch(booking.channelId);
     if (!channel?.isTextBased()) return;
     const msg = await channel.messages.fetch(booking.messageId);
-    const embed = buildBookingEmbed(booking, providerTag);
+    const rewardLabel = await rewardLabelForBooking(booking, services);
+    const embed = buildBookingEmbed(booking, providerTag, rewardLabel);
     const row = buildBookingActionRow(booking.bookingNumber, booking.status);
     await msg.edit({ embeds: [embed], components: [row] });
   } catch (err) {
@@ -441,7 +502,7 @@ export async function handleBookingActionButton(
       return;
     }
     await services.providerStats.incrementClaims(interaction.user.id);
-    await updateTicketMessage(interaction.client, updated, `<@${interaction.user.id}>`);
+    await updateTicketMessage(interaction.client, updated, services, `<@${interaction.user.id}>`);
     try {
       const customer = await interaction.client.users.fetch(updated.customerId);
       await customer.send(
@@ -468,6 +529,11 @@ export async function handleBookingActionButton(
       interaction.user.id,
       new Decimal(updated.price.toString())
     );
+    try {
+      await services.redemption.finalizeForBooking(updated.id, interaction.user.id);
+    } catch (err) {
+      console.error('[Book] reward finalize failed:', err);
+    }
     if (interaction.guildId) {
       try {
         const cfg = await services.invite.admin.getConfig(interaction.guildId);
@@ -483,7 +549,7 @@ export async function handleBookingActionButton(
         console.error('[Book] first-order invite bonus failed:', err);
       }
     }
-    await updateTicketMessage(interaction.client, updated);
+    await updateTicketMessage(interaction.client, updated, services);
     if (action === 'complete') {
       await triggerReviewFlow(interaction.client, updated);
     }
@@ -506,7 +572,12 @@ export async function handleBookingActionButton(
     if (updated.providerId) {
       await services.providerStats.incrementCancelled(updated.providerId);
     }
-    await updateTicketMessage(interaction.client, updated);
+    try {
+      await services.redemption.releaseForBooking(updated.id);
+    } catch (err) {
+      console.error('[Book] reward release failed:', err);
+    }
+    await updateTicketMessage(interaction.client, updated, services);
     await ephemeralReply(interaction, `Booking **${bookingNumber}** has been cancelled.`);
     await saveTranscriptAndScheduleDelete(
       interaction.client,

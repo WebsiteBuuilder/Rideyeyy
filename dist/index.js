@@ -59,6 +59,7 @@ const Panels = __importStar(require("./commands/panels"));
 const Invite = __importStar(require("./commands/invite"));
 const Admin = __importStar(require("./commands/inviteAdmin"));
 const Shop = __importStar(require("./commands/shop"));
+const RcAdmin = __importStar(require("./commands/rcAdmin"));
 const VerifyPanel = __importStar(require("./commands/verifyPanel"));
 const LotteryPanel = __importStar(require("./commands/lotteryPanel"));
 const Operations = __importStar(require("./commands/operations"));
@@ -80,7 +81,7 @@ const services = {
     economy: new EconomyService_1.EconomyService(),
     user: new UserService_1.UserService(),
     gambling: new GamblingService_1.GamblingService(),
-    booking: new BookingService_1.BookingService(),
+    booking: new BookingService_1.BookingService(economy.redemption),
     providerStats: new ProviderStatsService_1.ProviderStatsService(),
     blacklist: new BlacklistService_1.BlacklistService(),
     invite,
@@ -130,8 +131,10 @@ async function registerCommands(client) {
         Invite.invitesData,
         Invite.inviteLeaderboardData,
         Shop.shopData,
+        Shop.rewardsData,
         Shop.redeemData,
         Shop.lotteryData,
+        RcAdmin.rcData,
         Admin.adminData,
         VerifyPanel.verifyPanelData,
         LotteryPanel.lotteryPanelData,
@@ -211,6 +214,14 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             }
             if (select.customId === Help.HELP_NAV_ID) {
                 await Help.handleHelpSelect(select);
+                return;
+            }
+            if (select.customId === Book.REWARD_SELECT_ID) {
+                await Book.handleBookSelect(select, services);
+                return;
+            }
+            if (select.customId.startsWith(Shop.REDEEM_PICK_PREFIX)) {
+                await Shop.handleRedeemSelect(select, services);
                 return;
             }
             return;
@@ -309,11 +320,17 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             case 'shop':
                 await Shop.handleShop(interaction, services);
                 break;
+            case 'rewards':
+                await Shop.handleRewards(interaction, services);
+                break;
             case 'redeem':
                 await Shop.handleRedeem(interaction, services);
                 break;
             case 'lottery':
                 await Shop.handleLottery(interaction, services);
+                break;
+            case 'rc':
+                await RcAdmin.handleRc(interaction, services);
                 break;
             case 'admin':
                 await Admin.handleAdmin(interaction, services);

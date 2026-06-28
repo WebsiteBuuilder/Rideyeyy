@@ -52,7 +52,7 @@ async function handleInvites(interaction, services) {
         prisma_1.prisma.inviteJoin.count({ where: { guildId, inviterUserId: target.id, status: client_1.InviteStatus.PENDING } }),
         services.invite.admin.getConfig(guildId),
         services.lottery.getTickets(guildId, target.id),
-        services.redemption.listForUser(guildId, target.id, client_1.RedemptionStatus.ACTIVE),
+        services.redemption.listAvailable(guildId, target.id),
         prisma_1.prisma.inviteJoin.findMany({
             where: { guildId, inviterUserId: target.id },
             orderBy: { joinedAt: 'desc' },
@@ -72,9 +72,9 @@ async function handleInvites(interaction, services) {
         ? `${(0, discord_1.progressBar)(verified, nextMilestone.threshold)}  (${verified}/${nextMilestone.threshold})\n` +
             `Next: **${nextMilestone.label ?? `Milestone ${nextMilestone.threshold}`}** at ${nextMilestone.threshold} invites`
         : `${(0, discord_1.progressBar)(1, 1)}\nYou've reached every milestone — legend! ${discord_1.ICON.jackpot}`;
-    const codeLines = activeCodes.length
-        ? activeCodes.map((c) => `\`${c.code}\` — ${services.redemption.label(c.rewardKey)}`).join('\n')
-        : '_None — earn via milestones, /shop, or the lottery._';
+    const rewardLines = activeCodes.length
+        ? activeCodes.map((r) => services.redemption.formatRewardLine(r)).join('\n')
+        : '_None — earn via milestones, /shop, or the lottery. Apply rewards during `/book`._';
     const recentLines = recentJoins.length
         ? recentJoins
             .map((j) => `<@${j.invitedUserId}> — ${statusLabel(j.status)}`)
@@ -84,7 +84,7 @@ async function handleInvites(interaction, services) {
         .setTitle(`${discord_1.ICON.jackpot} Invites — ${target.username}`)
         .setThumbnail(target.displayAvatarURL({ size: 256 }))
         .setDescription(`${discord_1.LINE}\n${progress}`)
-        .addFields({ name: 'Verified', value: `${verified}`, inline: true }, { name: 'Pending', value: `${pendingCount}`, inline: true }, { name: 'Rejected', value: `${fake}`, inline: true }, { name: `${discord_1.BRAND.ticker} Earned`, value: `${discord_1.ICON.coin} ${rcEarned}`, inline: true }, { name: 'Milestones', value: `${milestonesCompleted}`, inline: true }, { name: 'Rank', value: rank > 0 ? `#${rank} / ${total}` : '—', inline: true }, { name: 'Lottery Tickets', value: `${tickets}`, inline: true }, { name: 'Per Verify', value: `${discord_1.ICON.coin} ${cfg.rewardAmount} ${discord_1.BRAND.ticker}`, inline: true }, { name: 'First Ride Bonus', value: `${discord_1.ICON.coin} ${config_1.config.inviteEconomy.firstOrderBonusRc} ${discord_1.BRAND.ticker}`, inline: true }, { name: 'Recent Invites', value: recentLines, inline: false }, { name: 'Active Reward Codes', value: codeLines, inline: false });
+        .addFields({ name: 'Verified', value: `${verified}`, inline: true }, { name: 'Pending', value: `${pendingCount}`, inline: true }, { name: 'Rejected', value: `${fake}`, inline: true }, { name: `${discord_1.BRAND.ticker} Earned`, value: `${discord_1.ICON.coin} ${rcEarned}`, inline: true }, { name: 'Milestones', value: `${milestonesCompleted}`, inline: true }, { name: 'Rank', value: rank > 0 ? `#${rank} / ${total}` : '—', inline: true }, { name: 'Lottery Tickets', value: `${tickets}`, inline: true }, { name: 'Per Verify', value: `${discord_1.ICON.coin} ${cfg.rewardAmount} ${discord_1.BRAND.ticker}`, inline: true }, { name: 'First Ride Bonus', value: `${discord_1.ICON.coin} ${config_1.config.inviteEconomy.firstOrderBonusRc} ${discord_1.BRAND.ticker}`, inline: true }, { name: 'Recent Invites', value: recentLines, inline: false }, { name: 'Active Rewards', value: rewardLines, inline: false });
     await (0, discord_1.ephemeralEmbed)(interaction, embed);
 }
 async function handleInviteLeaderboard(interaction, services) {

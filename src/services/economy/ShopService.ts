@@ -36,8 +36,42 @@ export class ShopService {
     return this.repo.listAll(guildId);
   }
 
-  upsertItem(item: { guildId: string; key: string; label: string; priceRc: number; rewardKey: string; sortOrder?: number; enabled?: boolean }): Promise<ShopItem> {
+  upsertItem(item: {
+    guildId: string;
+    key: string;
+    label: string;
+    description?: string | null;
+    priceRc: number;
+    rewardKey: string;
+    sortOrder?: number;
+    enabled?: boolean;
+  }): Promise<ShopItem> {
     return this.repo.upsert(item);
+  }
+
+  toggleItem(guildId: string, key: string): Promise<ShopItem | null> {
+    return this.repo.toggleEnabled(guildId, key);
+  }
+
+  async moveItem(guildId: string, key: string, direction: -1 | 1): Promise<boolean> {
+    const items = await this.repo.listAll(guildId);
+    const idx = items.findIndex((i) => i.key === key);
+    if (idx < 0) return false;
+    const swapIdx = idx + direction;
+    if (swapIdx < 0 || swapIdx >= items.length) return false;
+    const a = items[idx];
+    const b = items[swapIdx];
+    await prisma.$transaction([
+      prisma.shopItem.update({
+        where: { guildId_key: { guildId, key: a.key } },
+        data: { sortOrder: b.sortOrder },
+      }),
+      prisma.shopItem.update({
+        where: { guildId_key: { guildId, key: b.key } },
+        data: { sortOrder: a.sortOrder },
+      }),
+    ]);
+    return true;
   }
 
   removeItem(guildId: string, key: string): Promise<boolean> {
@@ -58,17 +92,16 @@ export class ShopService {
     try {
       redemption = await prisma.$transaction(async (tx) => {
         await adjustBalance(tx, userId, new Decimal(-item.priceRc), 'shop_purchase', `Shop: ${item.label}`);
-        const code = this.redemption.generateCode();
-        return tx.redemption.create({
-          data: {
+        return this.redemption.issue(
+          {
             guildId,
             userId,
             rewardKey: item.rewardKey,
-            code,
             source: RedemptionSource.SHOP,
-            costRc: new Decimal(item.priceRc),
+            costRc: item.priceRc,
           },
-        });
+          tx
+        );
       });
     } catch (err) {
       if (err instanceof InsufficientFundsError) throw new ShopPurchaseError('INSUFFICIENT_FUNDS');
@@ -79,7 +112,7 @@ export class ShopService {
       guildId,
       event: 'SHOP_PURCHASE',
       actorId: userId,
-      detail: `${item.label} (-${item.priceRc} RC) → \`${redemption.code}\``,
+      detail: `${item.label} (-${item.priceRc} RC) → ${this.redemption.label(item.rewardKey)}`,
     });
     return { item, redemption };
   }

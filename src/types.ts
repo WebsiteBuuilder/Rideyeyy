@@ -129,16 +129,19 @@ export interface BookingDraft {
   pickup?: string;
   destination?: string;
   price?: Decimal;
+  redemptionId?: string;
 }
 
 export interface CreateBookingInput {
   customerId: string;
+  guildId: string;
   preferredName: string;
   serviceType: ServiceType;
   vehicleType?: VehicleType;
   pickup: string;
   destination: string;
   notes?: string;
+  redemptionId?: string;
 }
 
 export interface ProviderStatsRow {

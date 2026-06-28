@@ -66,14 +66,13 @@ export class LotteryService {
     const prizeKey = cfg.lotteryPrizeKey;
     let redemptionCode: string | null = null;
 
-    // Atomically record the draw, issue the prize code, and reset all tickets.
     await prisma.$transaction(async (tx) => {
       if (winnerUserId) {
-        const code = this.redemption.generateCode();
-        await tx.redemption.create({
-          data: { guildId, userId: winnerUserId, rewardKey: prizeKey, code, source: RedemptionSource.LOTTERY },
-        });
-        redemptionCode = code;
+        const issued = await this.redemption.issue(
+          { guildId, userId: winnerUserId, rewardKey: prizeKey, source: RedemptionSource.LOTTERY },
+          tx
+        );
+        redemptionCode = issued.id;
       }
       await tx.lotteryDraw.create({
         data: { guildId, winnerUserId, totalTickets, participants, prizeKey, redemptionCode },
@@ -91,8 +90,8 @@ export class LotteryService {
     });
 
     await this.announce(client, guild, cfg, { winnerUserId, totalTickets, participants, prizeKey, redemptionCode });
-    if (winnerUserId && redemptionCode) {
-      await this.dmWinner(client, winnerUserId, prizeKey, redemptionCode);
+    if (winnerUserId) {
+      await this.dmWinner(client, winnerUserId, prizeKey);
     }
 
     return { winnerUserId, totalTickets, participants, prizeKey, redemptionCode };
@@ -128,13 +127,13 @@ export class LotteryService {
     }
   }
 
-  private async dmWinner(client: Client, userId: string, prizeKey: string, code: string): Promise<void> {
+  private async dmWinner(client: Client, userId: string, prizeKey: string): Promise<void> {
     try {
       const user = await client.users.fetch(userId);
-      const embed = buildLotteryWinnerDmEmbed(this.redemption.label(prizeKey), code);
+      const embed = buildLotteryWinnerDmEmbed(this.redemption.label(prizeKey));
       await user.send({ embeds: [embed] });
     } catch {
-      /* DMs closed — code is still retrievable via /redeem listing */
+      /* DMs closed — reward is in /rewards wallet */
     }
   }
 }

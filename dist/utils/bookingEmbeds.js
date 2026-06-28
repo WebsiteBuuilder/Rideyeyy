@@ -8,6 +8,8 @@ exports.buildServicePromptEmbed = buildServicePromptEmbed;
 exports.buildVehiclePromptEmbed = buildVehiclePromptEmbed;
 exports.buildServiceRow = buildServiceRow;
 exports.buildVehicleRow = buildVehicleRow;
+exports.buildRewardPromptEmbed = buildRewardPromptEmbed;
+exports.buildRewardSelectRow = buildRewardSelectRow;
 exports.buildOrderPanelEmbed = buildOrderPanelEmbed;
 exports.buildOrderPanelRow = buildOrderPanelRow;
 exports.buildInfoPanelEmbed = buildInfoPanelEmbed;
@@ -64,13 +66,18 @@ function copyable(value) {
     const trimmed = value.trim();
     return trimmed ? `\`${trimmed}\`` : '—';
 }
-function buildBookingEmbed(booking, providerTag) {
+function buildBookingEmbed(booking, providerTag, rewardLabel) {
     const banner = STATUS_BANNER[booking.status];
-    const description = (0, discord_1.statusBanner)(banner.text, banner.style) +
-        `\n${discord_1.LINE}\n` +
+    let description = (0, discord_1.statusBanner)(banner.text, banner.style) +
+        `\n${discord_1.LINE}\n`;
+    if (rewardLabel) {
+        description += (0, discord_1.statusBanner)(`🎁  REWARD APPLIED  🎁`, 'jackpot') + `\n`;
+        description += `_This customer is using **${rewardLabel}**_\n${discord_1.LINE}\n`;
+    }
+    description +=
         `**${discord_1.ICON.arrow} Pickup**\n${copyable(booking.pickup)}\n` +
-        `**${discord_1.ICON.arrow} Dropoff**\n${copyable(booking.destination)}\n` +
-        (booking.notes ? `\n**${discord_1.ICON.arrow} Notes**\n${booking.notes}\n` : '');
+            `**${discord_1.ICON.arrow} Dropoff**\n${copyable(booking.destination)}\n` +
+            (booking.notes ? `\n**${discord_1.ICON.arrow} Notes**\n${booking.notes}\n` : '');
     const embed = (0, discord_1.brandedEmbed)(STATUS_COLOR[booking.status])
         .setTitle(`${SERVICE_ICON[booking.serviceType]} ${SERVICE_LABELS[booking.serviceType]} · ${booking.bookingNumber}`)
         .setDescription(description)
@@ -164,6 +171,30 @@ function buildVehicleRow() {
         .setEmoji('🚐')
         .setStyle(discord_js_1.ButtonStyle.Success));
 }
+function buildRewardPromptEmbed() {
+    return (0, discord_1.brandedEmbed)(discord_1.COLOR.ELECTRIC)
+        .setTitle('🚗 New Booking')
+        .setDescription((0, discord_1.statusBanner)('◈  OPTIONAL REWARD  ◈', 'info') +
+        `\n${discord_1.LINE}\n` +
+        `You have rewards in your wallet. Pick one to apply to this booking, or choose **No reward**.\n\n` +
+        `_Applied rewards show on your ticket and are consumed when the ride completes._`);
+}
+function buildRewardSelectRow(rewards, labelFn, sourceFn) {
+    const options = [
+        new discord_js_1.StringSelectMenuOptionBuilder()
+            .setLabel('No reward')
+            .setValue('none')
+            .setDescription('Continue without applying a reward'),
+        ...rewards.map((r) => new discord_js_1.StringSelectMenuOptionBuilder()
+            .setLabel(labelFn(r.rewardKey).slice(0, 100))
+            .setValue(r.id)
+            .setDescription(`From ${sourceFn(r.source)}`.slice(0, 100))),
+    ];
+    return new discord_js_1.ActionRowBuilder().addComponents(new discord_js_1.StringSelectMenuBuilder()
+        .setCustomId('gudhrides-book:reward')
+        .setPlaceholder('Select a reward (optional)')
+        .addOptions(options.slice(0, 25)));
+}
 // ── Order-here panel (persistent Book Now button) ───────────────────────────
 function buildOrderPanelEmbed() {
     return (0, discord_1.brandedEmbed)(discord_1.COLOR.ELECTRIC)
@@ -173,7 +204,8 @@ function buildOrderPanelEmbed() {
         `Tap **Book Now** to start. You'll be guided through:\n\n` +
         `**1.** ${discord_1.ICON.arrow} Choose Ride or Courier\n` +
         `**2.** ${discord_1.ICON.arrow} Pick your vehicle (rides)\n` +
-        `**3.** ${discord_1.ICON.arrow} Paste your pickup & dropoff Google Maps links\n\n` +
+        `**3.** ${discord_1.ICON.arrow} Apply a reward from your wallet (optional)\n` +
+        `**4.** ${discord_1.ICON.arrow} Paste your pickup & dropoff Google Maps links\n\n` +
         `A private booking ticket opens for you and a provider. ${discord_1.ICON.check}`);
 }
 function buildOrderPanelRow() {

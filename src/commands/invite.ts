@@ -4,7 +4,7 @@ import {
   Guild,
   SlashCommandBuilder,
 } from 'discord.js';
-import { InviteStatus, RedemptionStatus } from '@prisma/client';
+import { InviteStatus } from '@prisma/client';
 import type { AppServices } from '../types';
 import { prisma } from '../lib/prisma';
 import { config as appConfig } from '../config';
@@ -80,7 +80,7 @@ export async function handleInvites(
     prisma.inviteJoin.count({ where: { guildId, inviterUserId: target.id, status: InviteStatus.PENDING } }),
     services.invite.admin.getConfig(guildId),
     services.lottery.getTickets(guildId, target.id),
-    services.redemption.listForUser(guildId, target.id, RedemptionStatus.ACTIVE),
+    services.redemption.listAvailable(guildId, target.id),
     prisma.inviteJoin.findMany({
       where: { guildId, inviterUserId: target.id },
       orderBy: { joinedAt: 'desc' },
@@ -104,9 +104,9 @@ export async function handleInvites(
       `Next: **${nextMilestone.label ?? `Milestone ${nextMilestone.threshold}`}** at ${nextMilestone.threshold} invites`
     : `${progressBar(1, 1)}\nYou've reached every milestone — legend! ${ICON.jackpot}`;
 
-  const codeLines = activeCodes.length
-    ? activeCodes.map((c) => `\`${c.code}\` — ${services.redemption.label(c.rewardKey)}`).join('\n')
-    : '_None — earn via milestones, /shop, or the lottery._';
+  const rewardLines = activeCodes.length
+    ? activeCodes.map((r) => services.redemption.formatRewardLine(r)).join('\n')
+    : '_None — earn via milestones, /shop, or the lottery. Apply rewards during `/book`._';
 
   const recentLines = recentJoins.length
     ? recentJoins
@@ -129,7 +129,7 @@ export async function handleInvites(
       { name: 'Per Verify', value: `${ICON.coin} ${cfg.rewardAmount} ${BRAND.ticker}`, inline: true },
       { name: 'First Ride Bonus', value: `${ICON.coin} ${appConfig.inviteEconomy.firstOrderBonusRc} ${BRAND.ticker}`, inline: true },
       { name: 'Recent Invites', value: recentLines, inline: false },
-      { name: 'Active Reward Codes', value: codeLines, inline: false }
+      { name: 'Active Rewards', value: rewardLines, inline: false }
     );
 
   await ephemeralEmbed(interaction, embed);

@@ -27,6 +27,7 @@ import * as Panels from './commands/panels';
 import * as Invite from './commands/invite';
 import * as Admin from './commands/inviteAdmin';
 import * as Shop from './commands/shop';
+import * as RcAdmin from './commands/rcAdmin';
 import * as VerifyPanel from './commands/verifyPanel';
 import * as LotteryPanel from './commands/lotteryPanel';
 import * as Operations from './commands/operations';
@@ -51,7 +52,7 @@ const services: AppServices = {
   economy:  new EconomyService(),
   user:     new UserService(),
   gambling: new GamblingService(),
-  booking:  new BookingService(),
+  booking:  new BookingService(economy.redemption),
   providerStats: new ProviderStatsService(),
   blacklist: new BlacklistService(),
   invite,
@@ -105,8 +106,10 @@ async function registerCommands(client: Client): Promise<void> {
     Invite.invitesData,
     Invite.inviteLeaderboardData,
     Shop.shopData,
+    Shop.rewardsData,
     Shop.redeemData,
     Shop.lotteryData,
+    RcAdmin.rcData,
     Admin.adminData,
     VerifyPanel.verifyPanelData,
     LotteryPanel.lotteryPanelData,
@@ -193,6 +196,14 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         await Help.handleHelpSelect(select);
         return;
       }
+      if (select.customId === Book.REWARD_SELECT_ID) {
+        await Book.handleBookSelect(select, services);
+        return;
+      }
+      if (select.customId.startsWith(Shop.REDEEM_PICK_PREFIX)) {
+        await Shop.handleRedeemSelect(select, services);
+        return;
+      }
       return;
     }
 
@@ -245,8 +256,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       case 'invites':            await Invite.handleInvites(interaction, services);           break;
       case 'invite-leaderboard': await Invite.handleInviteLeaderboard(interaction, services); break;
       case 'shop':         await Shop.handleShop(interaction, services);           break;
+      case 'rewards':      await Shop.handleRewards(interaction, services);        break;
       case 'redeem':       await Shop.handleRedeem(interaction, services);         break;
       case 'lottery':      await Shop.handleLottery(interaction, services);        break;
+      case 'rc':           await RcAdmin.handleRc(interaction, services);          break;
       case 'admin':        await Admin.handleAdmin(interaction, services);         break;
       case 'help':         await Help.handleHelp(interaction);                     break;
       case 'lotterypanel': await LotteryPanel.handleLotteryPanel(interaction, services); break;

@@ -16,7 +16,7 @@ const TOPICS = [
     { value: 'economy', label: 'Route Cash', emoji: '💰', description: 'Balance, daily, leaderboard' },
     { value: 'casino', label: 'Casino', emoji: '🎰', description: 'Coinflip, dice, blackjack' },
     { value: 'referrals', label: 'Referrals', emoji: '🎟️', description: 'Invite rewards & milestones' },
-    { value: 'shop', label: 'Shop & Lottery', emoji: '🛒', description: 'Spend RC, redeem codes' },
+    { value: 'shop', label: 'Shop & Rewards', emoji: '🛒', description: 'Spend RC, rewards wallet, lottery' },
     { value: 'providers', label: 'Providers', emoji: '🛞', description: 'Drivers & ticket workflow' },
 ];
 function channelRef(id) {
@@ -51,6 +51,7 @@ function buildHelpEmbed(topic) {
                 `• Staff may **close** bookings — the category turns red and new orders are paused until \`/open\`\n` +
                 `• Choose **Ride** or **Courier Delivery**\n` +
                 `• Pick a vehicle class (rides only)\n` +
+                `• Optionally apply a reward from your wallet\n` +
                 `• Paste **Google Maps links** for pickup and dropoff\n` +
                 `• A private ticket channel opens for you and a provider\n\n` +
                 `**In your ticket**\n` +
@@ -66,7 +67,7 @@ function buildHelpEmbed(topic) {
                 `**${discord_1.BRAND.currency}** is the server currency. Earn it, spend it in the shop, or gamble in the casino.\n\n` +
                 `**Wallet commands**\n` +
                 `• \`/balance\` — check your balance\n` +
-                `• \`/daily\` — free ${discord_1.BRAND.ticker} once per day (streak bonus!)\n` +
+                `• \`/daily\` — **${config_1.config.daily.reward} ${discord_1.BRAND.ticker}** once per day (+${config_1.config.daily.streakBonus} streak bonus, up to day ${config_1.config.daily.maxStreak})\n` +
                 `• \`/pay\` — send ${discord_1.BRAND.ticker} to someone\n` +
                 `• \`/tip\` — quick tip a member\n` +
                 `• \`/transactions\` — recent history\n` +
@@ -90,23 +91,24 @@ function buildHelpEmbed(topic) {
                 `2. They join and **pass verification** in ${verify} → **30 ${discord_1.BRAND.ticker}**\n` +
                 `3. They complete their **first ride** → **${firstOrderBonus} ${discord_1.BRAND.ticker}** bonus (once per invite)\n\n` +
                 `**Commands**\n` +
-                `• \`/invites\` — your stats, milestones, recent joins, and reward codes\n` +
+                `• \`/invites\` — your stats, milestones, recent joins, and active rewards\n` +
                 `• \`/invite-leaderboard\` — top inviters (all-time, weekly, monthly)\n\n` +
                 `_Fake, self, or early-leave invites don't count._`);
         case 'shop':
             return (0, discord_1.brandedEmbed)(discord_1.COLOR.INFO)
-                .setTitle('🛒 Shop, Codes & Lottery')
+                .setTitle('🛒 Shop, Rewards & Lottery')
                 .setDescription(`${discord_1.LINE}\n` +
                 `**Reward Shop**\n` +
                 `• \`/shop\` — browse items and spend ${discord_1.BRAND.ticker}\n` +
-                `• Purchases grant **reward codes** (free rides, discounts)\n\n` +
-                `**Redeem**\n` +
-                `• \`/redeem\` — apply a code when booking\n\n` +
+                `• Purchases add rewards to your wallet (free rides, discounts)\n\n` +
+                `**Rewards Wallet**\n` +
+                `• \`/rewards\` — view active rewards\n` +
+                `• Apply a reward during \`/book\` — it shows on your ticket and is consumed when the ride completes\n\n` +
                 `**Weekly Lottery**\n` +
                 `• Check the live panel in ${lottery !== '_channel not set_' ? lottery : 'the lottery channel'} — pot, countdown, last winner\n` +
                 `• \`/lottery\` — view the pot and your tickets\n` +
                 `• Tickets from dailies, invites, completed rides, and milestones\n` +
-                `• One winner drawn each week for the prize ride`);
+                `• One winner drawn each week — prize goes to your rewards wallet`);
         case 'providers':
             return (0, discord_1.brandedEmbed)(discord_1.COLOR.NEUTRAL)
                 .setTitle('🛞 For Providers (Drivers)')
@@ -120,7 +122,8 @@ function buildHelpEmbed(topic) {
                 `• \`/provider-leaderboard\` — top drivers\n\n` +
                 `**Operations (staff)**\n` +
                 `• \`/open\` — accept new bookings and show the green category\n` +
-                `• \`/close\` — pause bookings and show the red category\n\n` +
+                `• \`/close\` — pause bookings and show the red category\n` +
+                `• \`/rc give\` · \`/rc take\` — adjust member Route Cash balances\n\n` +
                 `_Need Provider access? Ask staff._`);
         default:
             return buildHelpEmbed('start');

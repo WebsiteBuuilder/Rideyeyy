@@ -179,6 +179,10 @@ async function handleDaily(interaction, services) {
         const { amount, streak, nextClaimAt } = await services.economy.claimDaily(interaction.user.id, config_1.config.daily.reward, config_1.config.daily.cooldownHours, config_1.config.daily.streakBonus, config_1.config.daily.maxStreak);
         const newBalance = await services.economy.getBalance(interaction.user.id);
         const maxed = streak >= config_1.config.daily.maxStreak;
+        const streakExtra = Math.max(0, streak - 1) * config_1.config.daily.streakBonus;
+        const breakdown = streakExtra > 0
+            ? `\`${config_1.config.daily.reward} base\` + \`${streakExtra} streak\` = **${(0, math_1.formatRC)(amount)}** ${discord_1.BRAND.ticker}`
+            : `\`${config_1.config.daily.reward}\` ${discord_1.BRAND.ticker} base reward`;
         // Award weekly-lottery tickets for the daily claim.
         if (interaction.guildId) {
             try {
@@ -197,6 +201,7 @@ async function handleDaily(interaction, services) {
             .setTitle(`${discord_1.ICON.check} DAILY CLAIMED`)
             .setDescription((0, discord_1.statusBanner)(`${discord_1.ICON.win}  REWARD COLLECTED  ${discord_1.ICON.win}`, 'win') +
             `\n# + ${discord_1.ICON.coin} ${(0, math_1.formatRC)(amount)}\n` +
+            `${breakdown}\n` +
             `${discord_1.LINE}`)
             .addFields({
             name: `${discord_1.ICON.streak} STREAK`,

@@ -50,11 +50,11 @@ exports.config = {
     inviteEconomy: {
         firstOrderBonusRc: Number(process.env['INVITE_FIRST_ORDER_BONUS'] ?? 100),
     },
-    // Daily reward
+    // Daily reward — base RC per claim; streak adds bonus RC for consecutive days.
     daily: {
-        reward: Number(process.env['DAILY_REWARD'] ?? 100),
+        reward: Number(process.env['DAILY_REWARD'] ?? 30),
         cooldownHours: Number(process.env['DAILY_COOLDOWN_HOURS'] ?? 24),
-        streakBonus: Number(process.env['DAILY_STREAK_BONUS'] ?? 10),
+        streakBonus: Number(process.env['DAILY_STREAK_BONUS'] ?? 5),
         maxStreak: Number(process.env['DAILY_MAX_STREAK'] ?? 7),
     },
     // Optional embed thumbnail URLs (BJ / lottery casino embeds).

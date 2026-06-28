@@ -54,10 +54,8 @@ class InviteMilestoneService {
                     }
                     let code = null;
                     if (m.rewardRideKey) {
-                        code = this.redemption.generateCode();
-                        await tx.redemption.create({
-                            data: { guildId, userId, rewardKey: m.rewardRideKey, code, source: client_1.RedemptionSource.MILESTONE },
-                        });
+                        await this.redemption.issue({ guildId, userId, rewardKey: m.rewardRideKey, source: client_1.RedemptionSource.MILESTONE }, tx);
+                        code = m.rewardRideKey;
                     }
                     if (m.rewardTickets > 0) {
                         await tx.lotteryTicket.upsert({
@@ -110,8 +108,8 @@ class InviteMilestoneService {
                 actorId: userId,
                 detail: `Reached ${m.threshold} invites${m.label ? ` (${m.label})` : ''} → ${rewardParts.join(', ') || 'no reward'}`,
             }, { client: ctx.client, channelId: ctx.loggingChannelId });
-            if (rideCode)
-                await this.dmRideCode(ctx.client, userId, m.rewardRideKey, rideCode);
+            if (rideCode && m.rewardRideKey)
+                await this.dmRideCode(ctx.client, userId, m.rewardRideKey);
             if (ctx.autoAnnounce) {
                 await this.announce(ctx, m);
             }
@@ -150,19 +148,19 @@ class InviteMilestoneService {
             console.error('[Invite] Milestone announce failed:', err);
         }
     }
-    async dmRideCode(client, userId, rewardKey, code) {
+    async dmRideCode(client, userId, rewardKey) {
         try {
             const user = await client.users.fetch(userId);
             const embed = new discord_js_1.EmbedBuilder()
                 .setColor(discord_1.COLOR.WIN)
                 .setAuthor({ name: `${discord_1.BRAND.logo}  Invite Milestone` })
                 .setTitle(`${discord_1.ICON.win} You earned a ride reward!`)
-                .setDescription(`Reward: **${this.redemption.label(rewardKey)}**\nRedemption code: \`${code}\`\n\nShow this code to staff in your booking ticket to claim it.`)
+                .setDescription(`**${this.redemption.label(rewardKey)}** was added to your rewards wallet.\n\nApply it during \`/book\` on your next ride!`)
                 .setTimestamp();
             await user.send({ embeds: [embed] });
         }
         catch {
-            /* DMs closed — code remains retrievable via /redeem listing */
+            /* DMs closed */
         }
     }
 }

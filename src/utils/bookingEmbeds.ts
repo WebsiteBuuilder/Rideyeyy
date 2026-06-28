@@ -3,8 +3,10 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
 } from 'discord.js';
-import type { Booking, BookingStatus, ServiceType, VehicleType } from '@prisma/client';
+import type { Booking, BookingStatus, Redemption, ServiceType, VehicleType } from '@prisma/client';
 import {
   actionButton,
   brandedEmbed,
@@ -75,12 +77,17 @@ function copyable(value: string): string {
   return trimmed ? `\`${trimmed}\`` : '—';
 }
 
-export function buildBookingEmbed(booking: Booking, providerTag?: string): EmbedBuilder {
+export function buildBookingEmbed(booking: Booking, providerTag?: string, rewardLabel?: string): EmbedBuilder {
   const banner = STATUS_BANNER[booking.status];
 
-  const description =
+  let description =
     statusBanner(banner.text, banner.style) +
-    `\n${LINE}\n` +
+    `\n${LINE}\n`;
+  if (rewardLabel) {
+    description += statusBanner(`🎁  REWARD APPLIED  🎁`, 'jackpot') + `\n`;
+    description += `_This customer is using **${rewardLabel}**_\n${LINE}\n`;
+  }
+  description +=
     `**${ICON.arrow} Pickup**\n${copyable(booking.pickup)}\n` +
     `**${ICON.arrow} Dropoff**\n${copyable(booking.destination)}\n` +
     (booking.notes ? `\n**${ICON.arrow} Notes**\n${booking.notes}\n` : '');
@@ -213,6 +220,42 @@ export function buildVehicleRow(): ActionRowBuilder<ButtonBuilder> {
   );
 }
 
+export function buildRewardPromptEmbed(): EmbedBuilder {
+  return brandedEmbed(COLOR.ELECTRIC)
+    .setTitle('🚗 New Booking')
+    .setDescription(
+      statusBanner('◈  OPTIONAL REWARD  ◈', 'info') +
+        `\n${LINE}\n` +
+        `You have rewards in your wallet. Pick one to apply to this booking, or choose **No reward**.\n\n` +
+        `_Applied rewards show on your ticket and are consumed when the ride completes._`
+    );
+}
+
+export function buildRewardSelectRow(
+  rewards: Redemption[],
+  labelFn: (key: string) => string,
+  sourceFn: (source: Redemption['source']) => string
+): ActionRowBuilder<StringSelectMenuBuilder> {
+  const options = [
+    new StringSelectMenuOptionBuilder()
+      .setLabel('No reward')
+      .setValue('none')
+      .setDescription('Continue without applying a reward'),
+    ...rewards.map((r) =>
+      new StringSelectMenuOptionBuilder()
+        .setLabel(labelFn(r.rewardKey).slice(0, 100))
+        .setValue(r.id)
+        .setDescription(`From ${sourceFn(r.source)}`.slice(0, 100))
+    ),
+  ];
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('gudhrides-book:reward')
+      .setPlaceholder('Select a reward (optional)')
+      .addOptions(options.slice(0, 25))
+  );
+}
+
 // ── Order-here panel (persistent Book Now button) ───────────────────────────
 
 export function buildOrderPanelEmbed(): EmbedBuilder {
@@ -224,7 +267,8 @@ export function buildOrderPanelEmbed(): EmbedBuilder {
       `Tap **Book Now** to start. You'll be guided through:\n\n` +
       `**1.** ${ICON.arrow} Choose Ride or Courier\n` +
       `**2.** ${ICON.arrow} Pick your vehicle (rides)\n` +
-      `**3.** ${ICON.arrow} Paste your pickup & dropoff Google Maps links\n\n` +
+      `**3.** ${ICON.arrow} Apply a reward from your wallet (optional)\n` +
+      `**4.** ${ICON.arrow} Paste your pickup & dropoff Google Maps links\n\n` +
       `A private booking ticket opens for you and a provider. ${ICON.check}`
     );
 }

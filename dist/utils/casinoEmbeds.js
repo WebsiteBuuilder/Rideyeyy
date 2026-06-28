@@ -191,14 +191,14 @@ function buildLotteryEmbed(input) {
     applyLotteryThumbnail(embed);
     return embed;
 }
-function buildLotteryWinnerDmEmbed(prizeLabel, code) {
+function buildLotteryWinnerDmEmbed(prizeLabel) {
     const embed = new discord_js_1.EmbedBuilder()
         .setColor(exports.LOTTERY_COLOR)
         .setTitle('🎟️  YOU WON THE WEEKLY LOTTERY!')
         .setDescription(`>>> ⚡ **JACKPOT!** ⚡\n\n` +
-        `🏆 **Grand Prize:** \`🚗  ${prizeLabel}\`\n` +
-        `🔑 **Redemption code:** \`${code}\`\n\n` +
-        `_Show this code to staff to claim your reward._`)
+        `🏆 **Grand Prize:** \`🚗  ${prizeLabel}\`\n\n` +
+        `_Your reward is in your wallet — apply it during \`/book\` on your next ride!_\n` +
+        `Check with \`/rewards\`.`)
         .setFooter({ text: LOTTERY_FOOTER })
         .setTimestamp();
     applyLotteryThumbnail(embed);

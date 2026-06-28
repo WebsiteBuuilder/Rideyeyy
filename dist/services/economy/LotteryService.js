@@ -44,14 +44,10 @@ class LotteryService {
         }
         const prizeKey = cfg.lotteryPrizeKey;
         let redemptionCode = null;
-        // Atomically record the draw, issue the prize code, and reset all tickets.
         await prisma_1.prisma.$transaction(async (tx) => {
             if (winnerUserId) {
-                const code = this.redemption.generateCode();
-                await tx.redemption.create({
-                    data: { guildId, userId: winnerUserId, rewardKey: prizeKey, code, source: client_1.RedemptionSource.LOTTERY },
-                });
-                redemptionCode = code;
+                const issued = await this.redemption.issue({ guildId, userId: winnerUserId, rewardKey: prizeKey, source: client_1.RedemptionSource.LOTTERY }, tx);
+                redemptionCode = issued.id;
             }
             await tx.lotteryDraw.create({
                 data: { guildId, winnerUserId, totalTickets, participants, prizeKey, redemptionCode },
@@ -67,8 +63,8 @@ class LotteryService {
                 : `No entrants this week`,
         });
         await this.announce(client, guild, cfg, { winnerUserId, totalTickets, participants, prizeKey, redemptionCode });
-        if (winnerUserId && redemptionCode) {
-            await this.dmWinner(client, winnerUserId, prizeKey, redemptionCode);
+        if (winnerUserId) {
+            await this.dmWinner(client, winnerUserId, prizeKey);
         }
         return { winnerUserId, totalTickets, participants, prizeKey, redemptionCode };
     }
@@ -103,14 +99,14 @@ class LotteryService {
             console.error('[Lottery] announce failed:', err);
         }
     }
-    async dmWinner(client, userId, prizeKey, code) {
+    async dmWinner(client, userId, prizeKey) {
         try {
             const user = await client.users.fetch(userId);
-            const embed = (0, casinoEmbeds_1.buildLotteryWinnerDmEmbed)(this.redemption.label(prizeKey), code);
+            const embed = (0, casinoEmbeds_1.buildLotteryWinnerDmEmbed)(this.redemption.label(prizeKey));
             await user.send({ embeds: [embed] });
         }
         catch {
-            /* DMs closed — code is still retrievable via /redeem listing */
+            /* DMs closed — reward is in /rewards wallet */
         }
     }
 }

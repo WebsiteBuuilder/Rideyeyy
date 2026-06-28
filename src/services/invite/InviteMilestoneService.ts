@@ -89,10 +89,11 @@ export class InviteMilestoneService {
           }
           let code: string | null = null;
           if (m.rewardRideKey) {
-            code = this.redemption.generateCode();
-            await tx.redemption.create({
-              data: { guildId, userId, rewardKey: m.rewardRideKey, code, source: RedemptionSource.MILESTONE },
-            });
+            await this.redemption.issue(
+              { guildId, userId, rewardKey: m.rewardRideKey, source: RedemptionSource.MILESTONE },
+              tx
+            );
+            code = m.rewardRideKey;
           }
           if (m.rewardTickets > 0) {
             await tx.lotteryTicket.upsert({
@@ -146,7 +147,7 @@ export class InviteMilestoneService {
         { client: ctx.client, channelId: ctx.loggingChannelId }
       );
 
-      if (rideCode) await this.dmRideCode(ctx.client, userId, m.rewardRideKey as string, rideCode);
+      if (rideCode && m.rewardRideKey) await this.dmRideCode(ctx.client, userId, m.rewardRideKey);
 
       if (ctx.autoAnnounce) {
         await this.announce(ctx, m);
@@ -190,18 +191,20 @@ export class InviteMilestoneService {
     }
   }
 
-  private async dmRideCode(client: Client, userId: string, rewardKey: string, code: string): Promise<void> {
+  private async dmRideCode(client: Client, userId: string, rewardKey: string): Promise<void> {
     try {
       const user = await client.users.fetch(userId);
       const embed = new EmbedBuilder()
         .setColor(COLOR.WIN)
         .setAuthor({ name: `${BRAND.logo}  Invite Milestone` })
         .setTitle(`${ICON.win} You earned a ride reward!`)
-        .setDescription(`Reward: **${this.redemption.label(rewardKey)}**\nRedemption code: \`${code}\`\n\nShow this code to staff in your booking ticket to claim it.`)
+        .setDescription(
+          `**${this.redemption.label(rewardKey)}** was added to your rewards wallet.\n\nApply it during \`/book\` on your next ride!`
+        )
         .setTimestamp();
       await user.send({ embeds: [embed] });
     } catch {
-      /* DMs closed — code remains retrievable via /redeem listing */
+      /* DMs closed */
     }
   }
 }

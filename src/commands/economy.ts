@@ -261,6 +261,11 @@ export async function handleDaily(
     );
     const newBalance = await services.economy.getBalance(interaction.user.id);
     const maxed = streak >= config.daily.maxStreak;
+    const streakExtra = Math.max(0, streak - 1) * config.daily.streakBonus;
+    const breakdown =
+      streakExtra > 0
+        ? `\`${config.daily.reward} base\` + \`${streakExtra} streak\` = **${formatRC(amount)}** ${BRAND.ticker}`
+        : `\`${config.daily.reward}\` ${BRAND.ticker} base reward`;
 
     // Award weekly-lottery tickets for the daily claim.
     if (interaction.guildId) {
@@ -281,6 +286,7 @@ export async function handleDaily(
       .setDescription(
         statusBanner(`${ICON.win}  REWARD COLLECTED  ${ICON.win}`, 'win') +
         `\n# + ${ICON.coin} ${formatRC(amount)}\n` +
+        `${breakdown}\n` +
         `${LINE}`
       )
       .addFields(

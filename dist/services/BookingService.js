@@ -28,6 +28,9 @@ async function nextBookingNumber() {
     return formatBookingNumber(seq);
 }
 class BookingService {
+    constructor(redemption) {
+        this.redemption = redemption;
+    }
     setDraft(userId, draft) {
         drafts.set(userId, draft);
     }
@@ -59,19 +62,30 @@ class BookingService {
             throw new Error('DUPLICATE_ROUTE');
         }
         const bookingNumber = await nextBookingNumber();
-        const booking = await prisma_1.prisma.booking.create({
-            data: {
-                bookingNumber,
-                customerId: input.customerId,
-                preferredName: input.preferredName.trim(),
-                serviceType: input.serviceType,
-                vehicleType: input.vehicleType ?? null,
-                pickup: input.pickup.trim(),
-                destination: input.destination.trim(),
-                price: '0.00',
-                notes: input.notes?.trim() || null,
-                status: 'PENDING',
-            },
+        const booking = await prisma_1.prisma.$transaction(async (tx) => {
+            const created = await tx.booking.create({
+                data: {
+                    bookingNumber,
+                    customerId: input.customerId,
+                    preferredName: input.preferredName.trim(),
+                    serviceType: input.serviceType,
+                    vehicleType: input.vehicleType ?? null,
+                    pickup: input.pickup.trim(),
+                    destination: input.destination.trim(),
+                    price: '0.00',
+                    notes: input.notes?.trim() || null,
+                    status: 'PENDING',
+                    redemptionId: input.redemptionId ?? null,
+                },
+            });
+            if (input.redemptionId) {
+                if (!this.redemption)
+                    throw new Error('REWARD_UNAVAILABLE');
+                const reserved = await this.redemption.reserveForBooking(input.redemptionId, created.id, input.customerId, tx);
+                if (!reserved)
+                    throw new Error('REWARD_UNAVAILABLE');
+            }
+            return created;
         });
         this.clearDraft(input.customerId);
         console.log(`[Bot] Booking Created: ${booking.bookingNumber} by ${input.customerId}`);

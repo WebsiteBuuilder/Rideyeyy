@@ -334,6 +334,16 @@ ALTER TABLE "InviteConfig" ADD COLUMN IF NOT EXISTS "ticketsPerEvent" INTEGER NO
 ALTER TABLE "InviteConfig" ADD COLUMN IF NOT EXISTS "lotteryPrizeKey" TEXT NOT NULL DEFAULT 'RIDE_FREE_20';
 ALTER TABLE "InviteConfig" ADD COLUMN IF NOT EXISTS "lotteryChannelId" TEXT;
 ALTER TABLE "InviteConfig" ADD COLUMN IF NOT EXISTS "bookingsOpen" BOOLEAN NOT NULL DEFAULT true;
+
+-- Rewards wallet expansion
+ALTER TYPE "RedemptionStatus" ADD VALUE IF NOT EXISTS 'RESERVED';
+ALTER TABLE "Redemption" ALTER COLUMN "code" DROP NOT NULL;
+ALTER TABLE "Redemption" ADD COLUMN IF NOT EXISTS "bookingId" TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS "Redemption_bookingId_key" ON "Redemption"("bookingId");
+CREATE INDEX IF NOT EXISTS "Redemption_bookingId_idx" ON "Redemption"("bookingId");
+ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "redemptionId" TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS "Booking_redemptionId_key" ON "Booking"("redemptionId");
+ALTER TABLE "ShopItem" ADD COLUMN IF NOT EXISTS "description" TEXT;
 ALTER TABLE "InviteJoin" ADD COLUMN IF NOT EXISTS "verifyAttempts" INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE "InviteJoin" ADD COLUMN IF NOT EXISTS "screenerVerifiedAt" TIMESTAMP(3);
 ALTER TABLE "InviteJoin" ADD COLUMN IF NOT EXISTS "firstOrderBonusPaid" BOOLEAN NOT NULL DEFAULT false;

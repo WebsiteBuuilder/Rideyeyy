@@ -56,15 +56,17 @@ model Booking {
   rating        Int?
   channelId     String?
   messageId     String?
+  redemptionId  String?       @unique
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   claimedAt     DateTime?
   completedAt   DateTime?
   cancelledAt   DateTime?
 
-  customer User?  @relation("CustomerBookings", fields: [customerId], references: [discordId])
-  provider User?  @relation("ProviderBookings", fields: [providerId], references: [discordId])
-  vouch    Vouch?
+  customer   User?        @relation("CustomerBookings", fields: [customerId], references: [discordId])
+  provider   User?        @relation("ProviderBookings", fields: [providerId], references: [discordId])
+  redemption Redemption?  @relation(fields: [redemptionId], references: [id])
+  vouch      Vouch?
 
   @@index([customerId])
   @@index([providerId])
@@ -338,6 +340,7 @@ enum RedemptionSource {
 
 enum RedemptionStatus {
   ACTIVE
+  RESERVED
   REDEEMED
   VOID
 }
@@ -347,30 +350,35 @@ model Redemption {
   guildId    String
   userId     String
   rewardKey  String
-  code       String           @unique
+  code       String?          @unique
   source     RedemptionSource @default(SHOP)
   status     RedemptionStatus @default(ACTIVE)
+  bookingId  String?          @unique
   costRc     Decimal?         @db.Decimal(18, 2)
   redeemedBy String?
   redeemedAt DateTime?
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 
+  booking Booking?
+
   @@index([guildId, userId])
   @@index([guildId, status])
+  @@index([bookingId])
 }
 
 model ShopItem {
-  id        String   @id @default(cuid())
-  guildId   String
-  key       String
-  label     String
-  priceRc   Int
-  rewardKey String
-  enabled   Boolean  @default(true)
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  guildId     String
+  key         String
+  label       String
+  description String?
+  priceRc     Int
+  rewardKey   String
+  enabled     Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@unique([guildId, key])
   @@index([guildId])

@@ -98,6 +98,11 @@ export async function handleAdminSelect(
   services: AppServices
 ): Promise<void> {
   if (!interaction.guildId || !isAdmin(interaction)) return;
+  if (interaction.customId === 'invadm:shop:pick') {
+    const view = await renderSection('shop', interaction.guildId, services, interaction.values[0]);
+    await interaction.update(view);
+    return;
+  }
   const section = interaction.values[0] as Section;
   const view = await renderSection(section, interaction.guildId, services);
   await interaction.update(view);
@@ -206,6 +211,40 @@ export async function handleAdminButton(
     }
     return;
   }
+
+  // Shop item management (customId: invadm:btn:shop:<action>[:key])
+  if (section === 'shop') {
+    const itemKey = arg;
+    if (action === 'edit' && itemKey) {
+      const field = interaction.customId.split(':')[5];
+      await openShopEditModal(interaction, guildId, itemKey, field ?? 'label', services);
+      return;
+    }
+    if (action === 'itemtoggle' && itemKey) {
+      await services.shop.toggleItem(guildId, itemKey);
+      const view = await renderSection('shop', guildId, services, itemKey);
+      await interaction.update(view);
+      return;
+    }
+    if (action === 'itemremove' && itemKey) {
+      await services.shop.removeItem(guildId, itemKey);
+      const view = await renderSection('shop', guildId, services);
+      await interaction.update(view);
+      return;
+    }
+    if (action === 'itemup' && itemKey) {
+      await services.shop.moveItem(guildId, itemKey, -1);
+      const view = await renderSection('shop', guildId, services, itemKey);
+      await interaction.update(view);
+      return;
+    }
+    if (action === 'itemdown' && itemKey) {
+      await services.shop.moveItem(guildId, itemKey, 1);
+      const view = await renderSection('shop', guildId, services, itemKey);
+      await interaction.update(view);
+      return;
+    }
+  }
 }
 
 // ── Modals ──────────────────────────────────────────────────────────────────
@@ -291,12 +330,73 @@ export async function handleAdminModal(
       const label = str('label');
       const priceRc = num('priceRc');
       const rewardKey = str('rewardKey').toUpperCase() || key;
+      const description = str('description') || null;
       if (!key || !label || priceRc == null || priceRc < 0) {
         await ephemeralReply(interaction, 'Key, label, and a non-negative price are required.');
         return;
       }
-      await services.shop.upsertItem({ guildId, key, label, priceRc: Math.round(priceRc), rewardKey });
+      const existing = await services.shop.listAll(guildId);
+      const sortOrder = existing.find((i) => i.key === key)?.sortOrder ?? existing.length;
+      await services.shop.upsertItem({
+        guildId,
+        key,
+        label,
+        description,
+        priceRc: Math.round(priceRc),
+        rewardKey,
+        sortOrder,
+      });
       await ephemeralReply(interaction, `Shop item **${label}** saved (${Math.round(priceRc)} ${BRAND.ticker}).`);
+      return;
+    }
+    case 'shopeditlabel': {
+      const key = str('key').toUpperCase();
+      const label = str('label');
+      if (!key || !label) {
+        await ephemeralReply(interaction, 'Key and label are required.');
+        return;
+      }
+      const item = (await services.shop.listAll(guildId)).find((i) => i.key === key);
+      if (!item) {
+        await ephemeralReply(interaction, 'Item not found.');
+        return;
+      }
+      await services.shop.upsertItem({
+        guildId,
+        key: item.key,
+        label,
+        description: item.description,
+        priceRc: item.priceRc,
+        rewardKey: item.rewardKey,
+        sortOrder: item.sortOrder,
+        enabled: item.enabled,
+      });
+      await ephemeralReply(interaction, `Updated label for **${key}**.`);
+      return;
+    }
+    case 'shopeditprice': {
+      const key = str('key').toUpperCase();
+      const priceRc = num('priceRc');
+      if (!key || priceRc == null || priceRc < 0) {
+        await ephemeralReply(interaction, 'Key and a non-negative price are required.');
+        return;
+      }
+      const item = (await services.shop.listAll(guildId)).find((i) => i.key === key);
+      if (!item) {
+        await ephemeralReply(interaction, 'Item not found.');
+        return;
+      }
+      await services.shop.upsertItem({
+        guildId,
+        key: item.key,
+        label: item.label,
+        description: item.description,
+        priceRc: Math.round(priceRc),
+        rewardKey: item.rewardKey,
+        sortOrder: item.sortOrder,
+        enabled: item.enabled,
+      });
+      await ephemeralReply(interaction, `Updated price for **${key}** (${Math.round(priceRc)} ${BRAND.ticker}).`);
       return;
     }
     case 'shopremove': {
@@ -487,7 +587,8 @@ function onOff(v: boolean): string {
 async function renderSection(
   section: Section,
   guildId: string,
-  services: AppServices
+  services: AppServices,
+  shopSelectedKey?: string
 ): Promise<{ embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] }> {
   const cfg = await services.invite.admin.getConfig(guildId);
   const nav = navRow(section);
@@ -597,18 +698,78 @@ async function renderSection(
     }
     case 'shop': {
       const items = await services.shop.listAll(guildId);
+      const rewardKeys = Object.keys(config.economy.rewardLabels);
       const list = items.length
         ? items
-            .map((it) => `\`${it.key}\` — ${it.label} · ${ICON.coin} ${it.priceRc} ${BRAND.ticker}${it.enabled ? '' : ' _(disabled)_'}`)
-            .join('\n')
+            .map((it, i) => {
+              const selected = it.key === shopSelectedKey ? ' ◀' : '';
+              const desc = it.description ? `\n   _${it.description}_` : '';
+              return `\`${i + 1}\` \`${it.key}\` — **${it.label}** · ${ICON.coin} ${it.priceRc} ${BRAND.ticker} · \`${it.rewardKey}\`${it.enabled ? '' : ' _(disabled)_'}${desc}${selected}`;
+            })
+            .join('\n\n')
         : '_No shop items configured._';
       embed = brandedEmbed(COLOR.WIN)
         .setTitle(`🛒 Reward Shop`)
-        .setDescription(`${LINE}\nStatus: ${onOff(cfg.shopEnabled)}\n\n${list}`);
+        .setDescription(
+          `${LINE}\nStatus: ${onOff(cfg.shopEnabled)}\n\n` +
+            list +
+            `\n\n**Known reward keys:** ${rewardKeys.map((k) => `\`${k}\``).join(', ')}`
+        );
+      if (items.length) {
+        rows.push(
+          new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId('invadm:shop:pick')
+              .setPlaceholder('Select an item to edit…')
+              .addOptions(
+                items.slice(0, 25).map((it) => ({
+                  label: it.label.slice(0, 100),
+                  value: it.key,
+                  description: `${it.priceRc} RC · ${it.rewardKey}`.slice(0, 100),
+                  default: it.key === shopSelectedKey,
+                }))
+              )
+          )
+        );
+      }
+      if (shopSelectedKey) {
+        const selected = items.find((i) => i.key === shopSelectedKey);
+        if (selected) {
+          rows.push(
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`invadm:btn:shop:edit:${shopSelectedKey}:label`)
+                .setLabel('Edit Label')
+                .setStyle(ButtonStyle.Primary),
+              new ButtonBuilder()
+                .setCustomId(`invadm:btn:shop:edit:${shopSelectedKey}:price`)
+                .setLabel('Edit Price')
+                .setStyle(ButtonStyle.Primary),
+              new ButtonBuilder()
+                .setCustomId(`invadm:btn:shop:itemtoggle:${shopSelectedKey}`)
+                .setLabel(selected.enabled ? 'Disable' : 'Enable')
+                .setStyle(ButtonStyle.Secondary),
+              new ButtonBuilder()
+                .setCustomId(`invadm:btn:shop:itemremove:${shopSelectedKey}`)
+                .setLabel('Remove')
+                .setStyle(ButtonStyle.Danger)
+            ),
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`invadm:btn:shop:itemup:${shopSelectedKey}`)
+                .setLabel('Move Up')
+                .setStyle(ButtonStyle.Secondary),
+              new ButtonBuilder()
+                .setCustomId(`invadm:btn:shop:itemdown:${shopSelectedKey}`)
+                .setLabel('Move Down')
+                .setStyle(ButtonStyle.Secondary)
+            )
+          );
+        }
+      }
       rows.push(
         new ActionRowBuilder<ButtonBuilder>().addComponents(
-          modalBtn('shop', 'shopadd', 'Add / Edit Item', ButtonStyle.Success),
-          modalBtn('shop', 'shopremove', 'Remove Item', ButtonStyle.Danger),
+          modalBtn('shop', 'shopadd', 'Add Item', ButtonStyle.Success),
           toggleBtn('shop', 'shopEnabled', 'Toggle Shop')
         )
       );
@@ -800,6 +961,40 @@ function resetBtn(section: Section, type: string, label: string): ButtonBuilder 
 
 // ── Modal builders ───────────────────────────────────────────────────────---
 
+async function openShopEditModal(
+  interaction: ButtonInteraction,
+  guildId: string,
+  itemKey: string,
+  field: string,
+  services: AppServices
+): Promise<void> {
+  const item = (await services.shop.listAll(guildId)).find((i) => i.key === itemKey);
+  if (!item) {
+    await interaction.reply({ content: 'Item not found.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const input = (id: string, label: string, value: string): ActionRowBuilder<TextInputBuilder> =>
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder().setCustomId(id).setLabel(label.slice(0, 45)).setStyle(TextInputStyle.Short).setRequired(true).setValue(value).setMaxLength(100)
+    );
+
+  if (field === 'price') {
+    const builder = new ModalBuilder()
+      .setCustomId('invadm:modal:shopeditprice')
+      .setTitle(`Edit Price — ${itemKey}`)
+      .addComponents(input('key', 'Item key', itemKey), input('priceRc', 'Price (RC)', String(item.priceRc)));
+    await interaction.showModal(builder);
+    return;
+  }
+
+  const builder = new ModalBuilder()
+    .setCustomId('invadm:modal:shopeditlabel')
+    .setTitle(`Edit Label — ${itemKey}`)
+    .addComponents(input('key', 'Item key', itemKey), input('label', 'Display label', item.label));
+  await interaction.showModal(builder);
+}
+
 async function openSectionModal(
   interaction: ButtonInteraction,
   modal: Section | string,
@@ -849,11 +1044,12 @@ async function openSectionModal(
       );
       break;
     case 'shopadd':
-      builder = new ModalBuilder().setCustomId('invadm:modal:shopadd').setTitle('Add / Edit Shop Item').addComponents(
+      builder = new ModalBuilder().setCustomId('invadm:modal:shopadd').setTitle('Add Shop Item').addComponents(
         input('key', 'Item key (unique)', '', true),
         input('label', 'Display label', '', true),
         input('priceRc', 'Price (RC)', '', true),
-        input('rewardKey', 'Reward key (blank = item key)', '')
+        input('rewardKey', `Reward key (${Object.keys(config.economy.rewardLabels).join(', ')})`, '', false),
+        input('description', 'Description (optional)', '')
       );
       break;
     case 'shopremove':
